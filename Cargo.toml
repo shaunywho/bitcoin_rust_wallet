@@ -1,0 +1,13 @@
+[package]
+name = "bitcoin_rust_wallet"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+bdk = {version = "0.29.0", features= ["keys-bip39"] }
+bdk_electrum = "0.4.0"
+
+
