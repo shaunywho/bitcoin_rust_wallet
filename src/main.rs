@@ -15,6 +15,7 @@ use bdk::descriptor::IntoWalletDescriptor;
 use bdk::keys::bip39::{Language, Mnemonic, WordCount};
 use bdk::keys::{GeneratableKey, GeneratedKey};
 use bdk::miniscript::Tap;
+use std::path::Path;
 use std::str::FromStr;
 
 /// This example demonstrates how to generate a mnemonic phrase
@@ -64,7 +65,7 @@ fn descriptor_generation() -> Result<(), anyhow::Error> {
 
 use bdk::bitcoin;
 use bdk::blockchain::ElectrumBlockchain;
-use bdk::database::MemoryDatabase;
+use bdk::database::{MemoryDatabase, SqliteDatabase};
 use bdk::electrum_client::Client;
 use bdk::{SyncOptions, Wallet};
 
@@ -166,6 +167,7 @@ fn sign_transaction() -> Result<(), bdk::Error> {
     Ok(())
 }
 
-fn main() -> Result<(), bdk::Error> {
-    sign_transaction()
+fn main() -> Result<(), anyhow::Error> {
+    let wallet_path = Path::new("wallet.db");
+    descriptor_generation()
 }
