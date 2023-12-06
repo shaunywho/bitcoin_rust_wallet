@@ -9,5 +9,16 @@ edition = "2021"
 anyhow = "1.0.75"
 bdk = { version = "0.29.0", features = ["keys-bip39", "sqlite"] }
 bdk_electrum = "0.4.0"
+egui = "0.24.0"
+eframe = { default-features = false, features = [
+    # accesskit struggles with threading
+    "default_fonts",
+    "wgpu",
+] }
+bincode = "1.3"
 
 
+env_logger = "0.10"
+serde = "1.0.193"
+secp256k1 = "0.28.0"
+hex = "0.4.3"
