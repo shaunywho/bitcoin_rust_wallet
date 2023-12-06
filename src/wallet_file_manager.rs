@@ -13,22 +13,26 @@ use std::io::{Read, Write};
 const FILENAME: &str = "./wallet.txt";
 pub struct WalletData {
     pub wallets: HashMap<[u8; 32], String>,
+    file: File,
 }
 impl WalletData {
-    pub fn new() -> WalletData {
-        let _ = OpenOptions::new().write(true).create(true).open(FILENAME);
-        Self {
-            wallets: HashMap::new(),
-        }
-    }
-    pub fn read_from_file(&mut self, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn new(filename: &str) -> WalletData {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(filename)
             .unwrap();
-        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
+
+        Self {
+            wallets: HashMap::new(),
+            file: file,
+        }
+    }
+    pub fn read_from_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(self.file);
 
         for result in rdr.records() {
             let record = result?;
@@ -49,11 +53,7 @@ impl WalletData {
         Ok(())
     }
 
-    pub fn add_wallet(
-        &mut self,
-        xkey: ExtendedKey,
-        filename: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_wallet(&mut self, xkey: ExtendedKey) -> Result<(), Box<dyn std::error::Error>> {
         let priv_key_array = xkey
             .into_xprv(Network::Testnet)
             .unwrap()
@@ -66,7 +66,7 @@ impl WalletData {
         } else {
             self.wallets
                 .insert(priv_key_array, "New Wallet".to_string());
-            self.append_private_key_to_wallet_file(&priv_key_array, filename)?;
+            self.append_private_key_to_wallet_file(&priv_key_array)?;
         }
 
         Ok(())
@@ -75,15 +75,9 @@ impl WalletData {
     pub fn append_private_key_to_wallet_file(
         &mut self,
         priv_key: &[u8; 32],
-        filename: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(filename)
-            .unwrap();
         if let Err(e) = writeln!(
-            file,
+            self.file,
             "{}, {}",
             hex::encode(priv_key),
             self.wallets[priv_key]

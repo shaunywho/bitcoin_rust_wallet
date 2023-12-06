@@ -15,12 +15,12 @@ use crate::bitcoin_wallet::{
 use crate::wallet_file_manager::WalletData;
 const FILENAME: &str = "./wallet.txt";
 fn main() -> Result<(), eframe::Error> {
-    let mut wallet_data = WalletData::new();
-    wallet_data.read_from_file(FILENAME);
+    let mut wallet_data = WalletData::new(FILENAME);
+    wallet_data.read_from_file();
     println!("{}", wallet_data.wallets.keys().len());
     let mnemonic = generate_mnemonic_string().unwrap();
     let key = generate_key(&mnemonic);
-    wallet_data.add_wallet(key.unwrap(), FILENAME);
+    wallet_data.add_wallet(key.unwrap());
     println!("{}", mnemonic);
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
