@@ -1,39 +1,42 @@
 use bdk::bitcoin::Network;
 use bdk::keys::ExtendedKey;
-use bincode::{deserialize, serialize};
+
 use csv::ReaderBuilder;
-use hex::encode;
-use secp256k1;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::Write;
 
 const FILENAME: &str = "./wallet.txt";
 pub struct WalletData {
     pub wallets: HashMap<[u8; 32], String>,
-    file: File,
+    filename: String,
 }
 impl WalletData {
     pub fn new(filename: &str) -> WalletData {
-        let file = OpenOptions::new()
+        let mut wallet_data = Self {
+            wallets: HashMap::new(),
+            filename: filename.to_string(),
+        };
+
+        return wallet_data;
+    }
+
+    fn get_file(&mut self) -> File {
+        OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(filename)
-            .unwrap();
-
-        Self {
-            wallets: HashMap::new(),
-            file: file,
-        }
+            .append(true)
+            .open(self.filename.clone())
+            .unwrap()
     }
-    pub fn read_from_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(self.file);
-
+    pub fn initialise_from_wallet_file(&mut self) -> Result<bool, Box<dyn std::error::Error>> {
+        let file = self.get_file();
+        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
+        if let None = rdr.records().next() {
+            return Ok(false);
+        }
         for result in rdr.records() {
             let record = result?;
             if record.len() == 2 {
@@ -50,7 +53,7 @@ impl WalletData {
                 }
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     pub fn add_wallet(&mut self, xkey: ExtendedKey) -> Result<(), Box<dyn std::error::Error>> {
@@ -66,18 +69,19 @@ impl WalletData {
         } else {
             self.wallets
                 .insert(priv_key_array, "New Wallet".to_string());
-            self.append_private_key_to_wallet_file(&priv_key_array)?;
+            self.append_to_wallet_file(&priv_key_array)?;
         }
 
         Ok(())
     }
 
-    pub fn append_private_key_to_wallet_file(
+    fn append_to_wallet_file(
         &mut self,
         priv_key: &[u8; 32],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = self.get_file();
         if let Err(e) = writeln!(
-            self.file,
+            file,
             "{}, {}",
             hex::encode(priv_key),
             self.wallets[priv_key]

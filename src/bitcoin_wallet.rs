@@ -6,7 +6,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 // Send testnet coin back to https://bitcoinfaucet.uo1.net/send.php
-use anyhow::anyhow;
+
 use bdk;
 use bdk::{
     bitcoin::Address,
@@ -19,19 +19,10 @@ use bdk::{
         bip39::{Language, Mnemonic, WordCount},
         DerivableKey, ExtendedKey, GeneratableKey, GeneratedKey, KeyError,
     },
-    miniscript,
     miniscript::ScriptContext,
     wallet::{AddressIndex, Wallet},
     SignOptions, SyncOptions,
 };
-
-enum RustWalletState {
-    NoWalletAvailable,
-    WalletAvailable,
-    TransactionSending,
-    WalletSyncing,
-    NetworkError,
-}
 
 use std::str::FromStr;
 
@@ -48,7 +39,7 @@ pub fn generate_mnemonic_string() -> Result<String, anyhow::Error> {
     Ok(mnemonic.to_string())
 }
 
-pub fn generate_key(mnemonic: &String) -> Result<ExtendedKey, KeyError> {
+pub fn generate_key(mnemonic: &str) -> Result<ExtendedKey, KeyError> {
     let mnemonic = Mnemonic::parse(mnemonic).unwrap();
     // Generate the extended key
     let xkey: ExtendedKey = mnemonic.into_extended_key()?;
