@@ -48,7 +48,7 @@ pub fn generate_mnemonic_string() -> Result<String, anyhow::Error> {
     Ok(mnemonic.to_string())
 }
 
-pub fn generate_keys(mnemonic: &String, network: Network) -> Result<ExtendedKey, KeyError> {
+pub fn generate_key(mnemonic: &String) -> Result<ExtendedKey, KeyError> {
     let mnemonic = Mnemonic::parse(mnemonic).unwrap();
     // Generate the extended key
     let xkey: ExtendedKey = mnemonic.into_extended_key()?;

@@ -3,14 +3,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 mod bitcoin_wallet;
+mod wallet_file_manager;
 use eframe::egui;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-use crate::bitcoin_wallet::{bitcoin_test, generate_mnemonic, generate_mnemonic_string};
-mod wallet_file_manager;
+use crate::bitcoin_wallet::{
+    bitcoin_test, generate_key, generate_mnemonic, generate_mnemonic_string,
+};
+
+use crate::wallet_file_manager::WalletData;
+const FILENAME: &str = "./wallet.txt";
 fn main() -> Result<(), eframe::Error> {
-    println!("{}", generate_mnemonic_string().unwrap());
+    let mut wallet_data = WalletData::new();
+    wallet_data.read_from_file(FILENAME);
+    println!("{}", wallet_data.wallets.keys().len());
+    let mnemonic = generate_mnemonic_string().unwrap();
+    let key = generate_key(&mnemonic);
+    wallet_data.add_wallet(key.unwrap(), FILENAME);
+    println!("{}", mnemonic);
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 768.0]),
