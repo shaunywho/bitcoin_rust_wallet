@@ -2,15 +2,21 @@ use bdk::bitcoin::Network;
 use bdk::keys::ExtendedKey;
 
 use csv::ReaderBuilder;
+use secp256k1;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
-
 const FILENAME: &str = "./wallet.txt";
+
 pub struct WalletData {
-    pub wallets: HashMap<[u8; 32], String>,
+    pub wallets: HashMap<String, String>,
     filename: String,
+}
+
+pub struct WalletElement {
+    secretkey: String,
+    name: String,
 }
 impl WalletData {
     pub fn new(filename: &str) -> WalletData {
@@ -49,7 +55,8 @@ impl WalletData {
                     let mut priv_key_array = [0u8; 32];
                     priv_key_array.copy_from_slice(&priv_key_bytes);
 
-                    self.wallets.insert(priv_key_array, wallet_name.to_string());
+                    self.wallets
+                        .insert(hex::encode(priv_key_array), wallet_name.to_string());
                 }
             }
         }
@@ -61,31 +68,21 @@ impl WalletData {
             .into_xprv(Network::Testnet)
             .unwrap()
             .private_key
-            .as_ref()
-            .to_owned();
-
-        if self.wallets.contains_key(&priv_key_array) {
+            .secret_bytes();
+        if self.wallets.contains_key(&hex::encode(priv_key_array)) {
             panic!("Wallet already exists");
         } else {
             self.wallets
-                .insert(priv_key_array, "New Wallet".to_string());
-            self.append_to_wallet_file(&priv_key_array)?;
+                .insert(hex::encode(priv_key_array), "New Wallet".to_string());
+            self.append_to_wallet_file(&hex::encode(priv_key_array))?;
         }
 
         Ok(())
     }
 
-    fn append_to_wallet_file(
-        &mut self,
-        priv_key: &[u8; 32],
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn append_to_wallet_file(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
-        if let Err(e) = writeln!(
-            file,
-            "{}, {}",
-            hex::encode(priv_key),
-            self.wallets[priv_key]
-        ) {
+        if let Err(e) = writeln!(file, "{}, {}", priv_key, self.wallets[priv_key]) {
             eprintln!("Couldn't write to file: {}", e);
         }
         Ok(())

@@ -74,7 +74,7 @@ fn new_worker(
 pub struct MyApp {
     state: Option<AppState>,
     wallet_data: WalletData,
-    selected_wallet: usize,
+    selected_wallet: String,
     threads: Vec<(JoinHandle<()>, mpsc::SyncSender<egui::Context>)>,
     on_done_tx: mpsc::SyncSender<()>,
     on_done_rc: mpsc::Receiver<()>,
@@ -86,13 +86,15 @@ impl MyApp {
     pub fn new() -> Self {
         let mut state = Option::None;
         let mut wallet_data = WalletData::new(FILENAME);
-        let mut selected_wallet = 0;
+        let selected_wallet = String::new();
         if wallet_data.initialise_from_wallet_file().unwrap() {
             state = Option::Some(AppState::WalletAvailable)
+        } else {
+            let mnemonic = generate_mnemonic_string().unwrap();
+            let xkey = generate_key(&mnemonic).unwrap();
+            wallet_data.add_wallet(xkey);
         }
-        // let mnemonic = generate_mnemonic_string().unwrap();
-        // let xkey = generate_key(&mnemonic).unwrap();
-        // wallet_data.add_wallet(xkey);
+
         let threads = Vec::with_capacity(3);
         let (on_done_tx, on_done_rc) = mpsc::sync_channel(0);
         let amount_to_send = format!("{}", 0);
@@ -131,9 +133,13 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
             ui.label("Wallets");
-            for (i, j) in self.wallet_data.wallets.values().enumerate() {
+            for (secret_key, name) in &self.wallet_data.wallets {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.selected_wallet, i, format!("{}", j));
+                    ui.selectable_value(
+                        &mut self.selected_wallet,
+                        secret_key.to_owned(),
+                        format!("{}", name),
+                    );
                 });
             }
         });
