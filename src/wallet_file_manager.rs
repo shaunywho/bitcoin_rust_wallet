@@ -40,9 +40,11 @@ impl WalletData {
     pub fn initialise_from_wallet_file(&mut self) -> Result<bool, Box<dyn std::error::Error>> {
         let file = self.get_file();
         let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
-        if let None = rdr.records().next() {
-            return Ok(false);
-        }
+
+        // if let None = rdr.records().next() {
+        //     return Ok(false);
+        // }
+        let mut found_record = false;
         for result in rdr.records() {
             let record = result?;
             if record.len() == 2 {
@@ -59,8 +61,10 @@ impl WalletData {
                         .insert(hex::encode(priv_key_array), wallet_name.to_string());
                 }
             }
+            found_record = true;
         }
-        Ok(true)
+
+        Ok(found_record)
     }
 
     pub fn add_wallet(&mut self, xkey: ExtendedKey) -> Result<(), Box<dyn std::error::Error>> {
