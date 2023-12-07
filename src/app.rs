@@ -1,5 +1,5 @@
-use crate::bitcoin_wallet::{generate_key, generate_mnemonic, generate_mnemonic_string};
-use crate::wallet_file_manager::{self, WalletData};
+use crate::bitcoin_wallet::{generate_key, generate_mnemonic_string};
+use crate::wallet_file_manager::WalletData;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
@@ -139,6 +139,9 @@ impl std::ops::Drop for MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
+            if self.rename_wallet {
+                ui.set_enabled(false);
+            }
             ui.label("Wallets");
             for (secret_key, name) in &self.wallet_data.wallets {
                 ui.horizontal(|ui| {
@@ -151,8 +154,12 @@ impl eframe::App for MyApp {
             }
         });
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.rename_wallet {
+                ui.set_enabled(false);
+            }
             ui.horizontal(|ui| {
                 if let Some(name) = self.wallet_data.wallets.get_mut(&self.selected_wallet) {
+                    ui.style_mut().spacing.item_spacing = egui::vec2(200.0, 500.0);
                     ui.label("Wallet Name: ");
                     ui.label(name.to_owned());
                     // let wallet_name = self
@@ -161,12 +168,13 @@ impl eframe::App for MyApp {
                         self.new_wallet_name = name.to_string();
                         self.dialog_window(ctx);
                     }
-                    if self.rename_wallet {
-                        self.dialog_window(ctx);
-                    }
                 }
             });
         });
+
+        if self.rename_wallet {
+            self.dialog_window(ctx);
+        }
 
         for (_handle, show_tx) in &self.threads {
             let _ = show_tx.send(ctx.clone());

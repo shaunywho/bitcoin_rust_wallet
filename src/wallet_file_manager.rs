@@ -2,7 +2,7 @@ use bdk::bitcoin::Network;
 use bdk::keys::ExtendedKey;
 
 use csv::ReaderBuilder;
-use secp256k1;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
