@@ -3,6 +3,7 @@ use bdk::keys::ExtendedKey;
 
 use csv::ReaderBuilder;
 
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -10,16 +11,30 @@ use std::io::Write;
 const FILENAME: &str = "./wallet.txt";
 
 pub struct WalletData {
-    pub wallets: HashMap<String, String>,
+    pub wallets: HashMap<String, WalletElement>,
     filename: String,
 }
 
 pub struct WalletElement {
-    secretkey: String,
-    name: String,
+    pub name: String,
+    pub account_history: Vec<WalletValue>,
+}
+
+impl WalletElement {
+    pub fn new(name: String) -> Self {
+        return Self {
+            name: name,
+            account_history: Vec::new(),
+        };
+    }
+}
+
+pub struct WalletValue {
+    amount: usize,
+    data: Utc,
 }
 impl WalletData {
-    pub fn new(filename: &str) -> WalletData {
+    pub fn new(filename: &str) -> Self {
         let mut wallet_data = Self {
             wallets: HashMap::new(),
             filename: filename.to_string(),
@@ -53,8 +68,10 @@ impl WalletData {
                     let mut priv_key_array = [0u8; 32];
                     priv_key_array.copy_from_slice(&priv_key_bytes);
 
-                    self.wallets
-                        .insert(hex::encode(priv_key_array), wallet_name.to_string());
+                    self.wallets.insert(
+                        hex::encode(priv_key_array),
+                        WalletElement::new(wallet_name.to_string()),
+                    );
                 }
             }
             found_record = true;
@@ -71,8 +88,10 @@ impl WalletData {
         if self.wallets.contains_key(&hex::encode(priv_key_array)) {
             panic!("Wallet already exists");
         } else {
-            self.wallets
-                .insert(hex::encode(priv_key_array), "New Wallet".to_string());
+            self.wallets.insert(
+                hex::encode(priv_key_array),
+                WalletElement::new("New Wallet".to_string()),
+            );
             self.append_to_wallet_file(&hex::encode(priv_key_array))?;
         }
 
@@ -81,7 +100,8 @@ impl WalletData {
 
     fn append_to_wallet_file(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
-        if let Err(e) = writeln!(file, "{}, {}", priv_key, self.wallets[priv_key]) {
+        let wallet_element = &self.wallets[priv_key];
+        if let Err(e) = writeln!(file, "{}, {}", priv_key, wallet_element.name) {
             eprintln!("Couldn't write to file: {}", e);
         }
         Ok(())
@@ -96,12 +116,12 @@ impl WalletData {
         let mut updated_records: Vec<String> = Vec::new();
 
         let mut found_record = false;
-        for (priv_key, wallet_name) in &self.wallets {
+        for (priv_key, wallet_element) in &self.wallets {
             if selected_priv_key == priv_key {
                 updated_records.push(format!("{}, {}", priv_key, new_wallet_name));
                 found_record = true;
             } else {
-                updated_records.push(format!("{}, {}", priv_key, wallet_name));
+                updated_records.push(format!("{}, {}", priv_key, wallet_element.name));
             }
         }
 

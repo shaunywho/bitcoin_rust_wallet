@@ -60,8 +60,13 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let address = wallet.get_address(AddressIndex::New)?;
-    println!("Generated Address: {}", address);
+
     wallet.sync(&blockchain, SyncOptions::default())?;
+    println!("\n\n\n\n\n");
+    println!("{:?}", wallet.list_transactions(true).unwrap().len());
+    println!("\n\n\n\n\n");
+
+    println!("Generated Address: {}", address);
     let balance = wallet.get_balance()?;
     println!("Wallet balance in SAT: {}", balance);
 

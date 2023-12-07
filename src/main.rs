@@ -4,6 +4,7 @@
 
 mod app;
 mod bitcoin_wallet;
+
 mod wallet_file_manager;
 use app::MyApp;
 use eframe::egui;
