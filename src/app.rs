@@ -80,13 +80,15 @@ pub struct MyApp {
     on_done_rc: mpsc::Receiver<()>,
     amount_to_send: String,
     wallet_amount: usize,
+    rename_wallet: bool,
+    new_wallet_name: String,
 }
 
 impl MyApp {
     pub fn new() -> Self {
         let mut state = Option::None;
         let mut wallet_data = WalletData::new(FILENAME);
-        let selected_wallet = String::new();
+        let mut selected_wallet = String::new();
         if wallet_data.initialise_from_wallet_file().unwrap() {
             state = Option::Some(AppState::WalletAvailable)
         } else {
@@ -94,11 +96,14 @@ impl MyApp {
             let xkey = generate_key(&mnemonic).unwrap();
             wallet_data.add_wallet(xkey);
         }
+        selected_wallet = wallet_data.wallets.values().nth(0).unwrap().to_owned();
 
         let threads = Vec::with_capacity(3);
         let (on_done_tx, on_done_rc) = mpsc::sync_channel(0);
         let amount_to_send = format!("{}", 0);
         let wallet_amount = 0;
+        let rename_wallet = false;
+        let new_wallet_name = String::new();
         let mut slf = Self {
             state,
             wallet_data,
@@ -108,6 +113,8 @@ impl MyApp {
             on_done_rc,
             amount_to_send,
             wallet_amount,
+            rename_wallet,
+            new_wallet_name,
         };
 
         slf
@@ -144,7 +151,21 @@ impl eframe::App for MyApp {
             }
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label("Hello World!");
+            ui.horizontal(|ui| {
+                if let Some(name) = self.wallet_data.wallets.get_mut(&self.selected_wallet) {
+                    ui.label("Wallet Name: ");
+                    ui.label(name.to_owned());
+                    // let wallet_name = self
+                    if ui.button("Rename Wallet").clicked() {
+                        self.rename_wallet = !self.rename_wallet;
+                        self.new_wallet_name = name.to_string();
+                        self.dialog_window(ctx);
+                    }
+                    if self.rename_wallet {
+                        self.dialog_window(ctx);
+                    }
+                }
+            });
         });
 
         for (_handle, show_tx) in &self.threads {
@@ -154,5 +175,37 @@ impl eframe::App for MyApp {
         for _ in 0..self.threads.len() {
             let _ = self.on_done_rc.recv();
         }
+    }
+}
+
+impl MyApp {
+    pub fn dialog_window(&mut self, ctx: &egui::Context) {
+        egui::Window::new("Do you want to quit?")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // if let Some(name) = self.wallet_data.wallets.get_mut(&self.selected_wallet) {
+
+                    ui.text_edit_singleline(&mut self.new_wallet_name);
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Reset").clicked() {
+                        self.rename_wallet = !self.rename_wallet;
+                        // self.wallet_data.wallets.get_mut(&self.selected_wallet)
+                    }
+
+                    if ui.button("Save").clicked() {
+                        *self
+                            .wallet_data
+                            .wallets
+                            .get_mut(&self.selected_wallet)
+                            .unwrap() = self.new_wallet_name.clone();
+                        self.wallet_data
+                            .rename_wallet(&self.selected_wallet, &self.new_wallet_name);
+                        self.rename_wallet = !self.rename_wallet;
+                    }
+                });
+            });
     }
 }

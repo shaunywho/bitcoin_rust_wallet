@@ -40,10 +40,6 @@ impl WalletData {
     pub fn initialise_from_wallet_file(&mut self) -> Result<bool, Box<dyn std::error::Error>> {
         let file = self.get_file();
         let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
-
-        // if let None = rdr.records().next() {
-        //     return Ok(false);
-        // }
         let mut found_record = false;
         for result in rdr.records() {
             let record = result?;
@@ -63,7 +59,6 @@ impl WalletData {
             }
             found_record = true;
         }
-
         Ok(found_record)
     }
 
@@ -89,6 +84,39 @@ impl WalletData {
         if let Err(e) = writeln!(file, "{}, {}", priv_key, self.wallets[priv_key]) {
             eprintln!("Couldn't write to file: {}", e);
         }
+        Ok(())
+    }
+
+    pub fn rename_wallet(
+        &mut self,
+        selected_priv_key: &str,
+        new_wallet_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = self.get_file();
+        let mut updated_records: Vec<String> = Vec::new();
+
+        let mut found_record = false;
+        for (priv_key, wallet_name) in &self.wallets {
+            if selected_priv_key == priv_key {
+                updated_records.push(format!("{}, {}", priv_key, new_wallet_name));
+                found_record = true;
+            } else {
+                updated_records.push(format!("{}, {}", priv_key, wallet_name));
+            }
+        }
+
+        if !found_record {
+            return Err("Record not found".into());
+        }
+
+        file.set_len(0)?; // Clear the file
+
+        for record in updated_records {
+            if let Err(e) = writeln!(file, "{}", record) {
+                eprintln!("Couldn't write to file: {}", e);
+            }
+        }
+
         Ok(())
     }
 }
