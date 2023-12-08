@@ -7,8 +7,12 @@
 // licenses.
 // Send testnet coin back to https://bitcoinfaucet.uo1.net/send.php
 
-use bdk;
+use bdk::bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey};
+use bdk::bitcoin::network;
+use bdk::template::Bip44;
+use bdk::{self, KeychainKind};
 use bdk::{
+    bitcoin::secp256k1::Secp256k1,
     bitcoin::Address,
     bitcoin::Network,
     blockchain::Blockchain,
@@ -39,12 +43,23 @@ pub fn generate_mnemonic_string() -> Result<String, anyhow::Error> {
     Ok(mnemonic.to_string())
 }
 
-pub fn generate_key(mnemonic: &str) -> Result<ExtendedKey, KeyError> {
+pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
     let mnemonic = Mnemonic::parse(mnemonic).unwrap();
     // Generate the extended key
     let xkey: ExtendedKey = mnemonic.into_extended_key()?;
     // Get xprv from the extended key
-    Ok(xkey)
+    let xprv = xkey.into_xprv(Network::Testnet).unwrap();
+    Ok(xprv)
+}
+
+pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
+    let mut wallet = Wallet::new(
+        Bip44(xprv.clone(), bdk::KeychainKind::External),
+        Some(Bip44(xprv, KeychainKind::Internal)),
+        Network::Testnet,
+        MemoryDatabase::new(),
+    );
+    return Ok(wallet?);
 }
 
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -103,4 +118,31 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
         txid = txid
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use bdk::bitcoin::{bip32::ExtendedPrivKey, Network};
+
+    use crate::bitcoin_wallet::{generate_wallet, generate_xpriv};
+
+    #[test]
+    fn test_generating_wallet() {
+        // from mnemonic
+        let mnemonic_0 =
+            "limb capital decade way negative task moral empty virus fragile copper elegant";
+        let mnemonic_1 = &String::from(mnemonic_0)[..];
+        let xkey_0 = generate_xpriv(mnemonic_0).unwrap();
+        let xkey_1 = generate_xpriv(mnemonic_0.clone()).unwrap();
+        let wallet_0 = generate_wallet(xkey_0).unwrap();
+
+        let xpriv = xkey_1.into_xprv(Network::Testnet).unwrap();
+        let xpriv_str = xpriv.to_string();
+        println!("{}", &xpriv_str);
+        let xpriv_1 = ExtendedPrivKey::from_str(&xpriv_str[..]).unwrap();
+        let xpriv_str_1 = xpriv_1.to_string();
+        println!("{}", &xpriv_str_1);
+    }
 }

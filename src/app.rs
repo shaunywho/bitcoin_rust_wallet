@@ -1,6 +1,11 @@
-use crate::bitcoin_wallet::{bitcoin_test, generate_key, generate_mnemonic_string};
+use bdk::bitcoin::bip32::ExtendedPrivKey;
+
+use crate::bitcoin_wallet::{
+    bitcoin_test, generate_mnemonic_string, generate_wallet, generate_xpriv,
+};
 
 use crate::wallet_file_manager::WalletData;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
@@ -102,8 +107,7 @@ impl MyApp {
         let mut selected_wallet = Option::None;
         if wallet_data.initialise_from_wallet_file().unwrap() {
             state = AppState::WalletAvailable;
-            selected_wallet =
-                Option::Some(wallet_data.wallets.values().nth(0).unwrap().name.to_owned());
+            selected_wallet = Option::Some(wallet_data.wallets.keys().nth(0).unwrap().to_owned());
         }
         let threads = Vec::with_capacity(3);
         let (on_done_tx, on_done_rc) = mpsc::sync_channel(0);
@@ -156,15 +160,8 @@ impl MyApp {
             AppState::WalletNotAvailable => {
                 if !self.wallet_data.wallets.is_empty() {
                     self.state = AppState::WalletAvailable;
-                    self.selected_wallet = Option::Some(
-                        self.wallet_data
-                            .wallets
-                            .values()
-                            .nth(0)
-                            .unwrap()
-                            .name
-                            .to_owned(),
-                    );
+                    self.selected_wallet =
+                        Option::Some(self.wallet_data.wallets.keys().nth(0).unwrap().to_owned());
                 }
             }
             _ => (),
@@ -204,7 +201,7 @@ impl MyApp {
                         ui.selectable_value(
                             self.selected_wallet.as_mut().unwrap(),
                             secret_key.to_owned(),
-                            format!("{}", wallet_element.name),
+                            format!("{}", wallet_element.wallet_name),
                         );
                     });
                 }
@@ -225,20 +222,20 @@ impl MyApp {
                 }
             } else {
                 ui.horizontal(|ui| {
-                    if let Some(wallet_element) = self
-                        .wallet_data
-                        .wallets
-                        .get_mut(&self.selected_wallet.clone().unwrap())
-                    {
-                        ui.style_mut().spacing.item_spacing = egui::vec2(200.0, 500.0);
-                        ui.label("Wallet Name: ");
-                        ui.label(wallet_element.name.to_owned());
-                        // let wallet_name = self
-                        if ui.button("Rename Wallet").clicked() {
-                            self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
-                            self.shared_string = wallet_element.name.to_string();
-                        }
-                    }
+                    ui.label(format!(
+                        "Secret Key: {}",
+                        self.selected_wallet.clone().unwrap()
+                    ));
+                    ui.horizontal(|ui| {
+                        let wallet = self
+                            .wallet_data
+                            .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap());
+                        // let xpriv =
+                        //     ExtendedPrivKey::from_str(&self.selected_wallet.clone().unwrap())
+                        //         .unwrap();
+                        // let wallet = self.wallet_data.get_wallet_from_xpriv(xpriv).unwrap();
+                        // ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()))
+                    })
                 });
             }
         });
@@ -260,11 +257,11 @@ impl MyApp {
                         {
                             ui.style_mut().spacing.item_spacing = egui::vec2(200.0, 500.0);
                             ui.label("Wallet Name: ");
-                            ui.label(wallet_element.name.to_owned());
+                            ui.label(wallet_element.wallet_name.to_owned());
                             // let wallet_name = self
                             if ui.button("Rename Wallet").clicked() {
                                 self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
-                                self.shared_string = wallet_element.name.to_string();
+                                self.shared_string = wallet_element.wallet_name.to_string();
                             }
                         }
                     });
@@ -284,7 +281,7 @@ impl MyApp {
                 });
                 ui.horizontal(|ui| {
                     if ui.button("Accept").clicked() {
-                        let xkey = generate_key(&self.shared_string).unwrap();
+                        let xkey = generate_xpriv(&self.shared_string).unwrap();
                         self.wallet_data.add_wallet(xkey);
                         self.dialog_box = None;
                     }
@@ -309,7 +306,7 @@ impl MyApp {
                             .wallets
                             .get_mut(&self.selected_wallet.clone().unwrap())
                             .unwrap()
-                            .name = self.shared_string.clone();
+                            .wallet_name = self.shared_string.clone();
                         self.wallet_data.rename_wallet(
                             &self.selected_wallet.clone().unwrap(),
                             &self.shared_string,

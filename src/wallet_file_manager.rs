@@ -1,13 +1,19 @@
+use bdk::bitcoin::bip32::ExtendedPrivKey;
 use bdk::bitcoin::Network;
+use bdk::database::MemoryDatabase;
 use bdk::keys::ExtendedKey;
-
+use bdk::wallet::Wallet;
 use csv::ReaderBuilder;
 
 use chrono::{DateTime, Duration, Utc};
+use egui::Memory;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::str::FromStr;
+
+use crate::bitcoin_wallet::generate_wallet;
 const FILENAME: &str = "./wallet.txt";
 
 pub struct WalletData {
@@ -16,15 +22,15 @@ pub struct WalletData {
 }
 
 pub struct WalletElement {
-    pub name: String,
-    pub account_history: Vec<WalletValue>,
+    pub wallet_name: String,
+    pub wallet_obj: Wallet<MemoryDatabase>,
 }
 
 impl WalletElement {
-    pub fn new(name: String) -> Self {
+    pub fn new(wallet_name: String, wallet_obj: Wallet<MemoryDatabase>) -> Self {
         return Self {
-            name: name,
-            account_history: Vec::new(),
+            wallet_name: wallet_name,
+            wallet_obj: wallet_obj,
         };
     }
 }
@@ -60,17 +66,14 @@ impl WalletData {
             let record = result?;
             if record.len() == 2 {
                 // Assuming the CSV has two columns: private key and wallet name
-                let priv_key_str = record[0].trim();
+                let private_key_str = record[0].trim();
                 let wallet_name = record[1].trim();
 
-                if !priv_key_str.is_empty() && !wallet_name.is_empty() {
-                    let priv_key_bytes = hex::decode(priv_key_str)?;
-                    let mut priv_key_array = [0u8; 32];
-                    priv_key_array.copy_from_slice(&priv_key_bytes);
-
+                if !private_key_str.is_empty() {
+                    let xpriv = ExtendedPrivKey::from_str(private_key_str)?;
                     self.wallets.insert(
-                        hex::encode(priv_key_array),
-                        WalletElement::new(wallet_name.to_string()),
+                        private_key_str.to_owned(),
+                        WalletElement::new(wallet_name.to_string(), generate_wallet(xpriv)?),
                     );
                 }
             }
@@ -78,21 +81,25 @@ impl WalletData {
         }
         Ok(found_record)
     }
+    pub fn get_wallet_from_xpriv_str(
+        &mut self,
+        xprv_str: String,
+    ) -> Result<&Wallet<MemoryDatabase>, anyhow::Error> {
+        let xprv_str = &xprv_str[..];
+        let wallet_element = self.wallets.get_mut(xprv_str).unwrap();
+        return Ok(&wallet_element.wallet_obj);
+    }
 
-    pub fn add_wallet(&mut self, xkey: ExtendedKey) -> Result<(), Box<dyn std::error::Error>> {
-        let priv_key_array = xkey
-            .into_xprv(Network::Testnet)
-            .unwrap()
-            .private_key
-            .secret_bytes();
-        if self.wallets.contains_key(&hex::encode(priv_key_array)) {
+    pub fn add_wallet(&mut self, xprv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
+        let wallet_nameing = xprv.to_string();
+        if self.wallets.contains_key(&wallet_nameing) {
             panic!("Wallet already exists");
         } else {
             self.wallets.insert(
-                hex::encode(priv_key_array),
-                WalletElement::new("New Wallet".to_string()),
+                wallet_nameing.clone(),
+                WalletElement::new("New Wallet".to_string(), generate_wallet(xprv)?),
             );
-            self.append_to_wallet_file(&hex::encode(priv_key_array))?;
+            self.append_to_wallet_file(&wallet_nameing)?;
         }
 
         Ok(())
@@ -101,7 +108,7 @@ impl WalletData {
     fn append_to_wallet_file(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
         let wallet_element = &self.wallets[priv_key];
-        if let Err(e) = writeln!(file, "{}, {}", priv_key, wallet_element.name) {
+        if let Err(e) = writeln!(file, "{}, {}", priv_key, wallet_element.wallet_name) {
             eprintln!("Couldn't write to file: {}", e);
         }
         Ok(())
@@ -121,7 +128,7 @@ impl WalletData {
                 updated_records.push(format!("{}, {}", priv_key, new_wallet_name));
                 found_record = true;
             } else {
-                updated_records.push(format!("{}, {}", priv_key, wallet_element.name));
+                updated_records.push(format!("{}, {}", priv_key, wallet_element.wallet_name));
             }
         }
 
@@ -138,5 +145,13 @@ impl WalletData {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn working() {
+        assert!(true);
     }
 }
