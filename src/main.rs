@@ -18,6 +18,10 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "My parallel egui App",
         options,
-        Box::new(|_cc| Box::new(MyApp::new())),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+
+            Box::new(MyApp::new())
+        }),
     )
 }

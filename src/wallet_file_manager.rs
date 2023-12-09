@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::bitcoin_wallet::generate_wallet;
@@ -23,11 +24,11 @@ pub struct WalletData {
 
 pub struct WalletElement {
     pub wallet_name: String,
-    pub wallet_obj: Wallet<MemoryDatabase>,
+    pub wallet_obj: Rc<Wallet<MemoryDatabase>>,
 }
 
 impl WalletElement {
-    pub fn new(wallet_name: String, wallet_obj: Wallet<MemoryDatabase>) -> Self {
+    pub fn new(wallet_name: String, wallet_obj: Rc<Wallet<MemoryDatabase>>) -> Self {
         return Self {
             wallet_name: wallet_name,
             wallet_obj: wallet_obj,
@@ -84,10 +85,10 @@ impl WalletData {
     pub fn get_wallet_from_xpriv_str(
         &mut self,
         xprv_str: String,
-    ) -> Result<&Wallet<MemoryDatabase>, anyhow::Error> {
+    ) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
         let xprv_str = &xprv_str[..];
         let wallet_element = self.wallets.get_mut(xprv_str).unwrap();
-        return Ok(&wallet_element.wallet_obj);
+        return Ok(Rc::clone(&wallet_element.wallet_obj));
     }
 
     pub fn add_wallet(&mut self, xprv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
@@ -145,6 +146,11 @@ impl WalletData {
         }
 
         Ok(())
+    }
+
+    pub fn get_first_wallet_xpriv_str(&mut self) -> String {
+        let first_wallet = self.wallets.keys().nth(0).unwrap().to_owned();
+        return first_wallet;
     }
 }
 

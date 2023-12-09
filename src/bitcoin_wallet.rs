@@ -9,7 +9,7 @@
 
 use bdk::bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use bdk::bitcoin::network;
-use bdk::template::Bip44;
+use bdk::template::{Bip44, Bip84};
 use bdk::{self, KeychainKind};
 use bdk::{
     bitcoin::secp256k1::Secp256k1,
@@ -28,6 +28,7 @@ use bdk::{
     SignOptions, SyncOptions,
 };
 
+use std::rc::Rc;
 use std::str::FromStr;
 
 pub fn generate_mnemonic<Ctx>() -> Result<GeneratedKey<Mnemonic, Ctx>, anyhow::Error>
@@ -52,14 +53,22 @@ pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
     Ok(xprv)
 }
 
-pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
+pub fn get_transactions(wallet: &Wallet<MemoryDatabase>) {
+    let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default());
+    println!("{:?}", wallet.list_transactions(true).unwrap());
+}
+
+pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
     let mut wallet = Wallet::new(
-        Bip44(xprv.clone(), bdk::KeychainKind::External),
-        Some(Bip44(xprv, KeychainKind::Internal)),
+        Bip84(xprv.clone(), KeychainKind::External),
+        Some(Bip84(xprv, KeychainKind::Internal)),
         Network::Testnet,
         MemoryDatabase::new(),
     );
-    return Ok(wallet?);
+
+    return Ok(Rc::new(wallet?));
 }
 
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -78,7 +87,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
 
     wallet.sync(&blockchain, SyncOptions::default())?;
     println!("\n\n\n\n\n");
-    println!("{:?}", wallet.list_transactions(true).unwrap().len());
+    println!("{:#?}", wallet.list_transactions(true).unwrap());
     println!("\n\n\n\n\n");
 
     println!("Generated Address: {}", address);
