@@ -252,12 +252,15 @@ impl MyApp {
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet();
         let address = wallet.get_address(AddressIndex::Peek(0));
-        ui.label(format!("Public Key: {:?}", address.unwrap().address));
+        ui.label(format!(
+            "Public Key: {:?}",
+            address.as_ref().unwrap().address
+        ));
         // Encode some data into bits.
 
         let img = ui.ctx().load_texture(
             "my-image",
-            generate_qrcode_from_address(&self.selected_wallet.as_ref().unwrap().0).unwrap(),
+            generate_qrcode_from_address(&address.unwrap().address.to_string()).unwrap(),
             Default::default(),
         );
 
@@ -366,7 +369,7 @@ fn load_image_from_path(path: &std::path::Path) -> Result<egui::ColorImage, imag
 }
 
 pub fn generate_qrcode_from_address(address: &str) -> Result<egui::ColorImage, image::ImageError> {
-    let result = qrcode_generator::to_png_to_vec("Hello world!", QrCodeEcc::Low, 100).unwrap();
+    let result = qrcode_generator::to_png_to_vec(address, QrCodeEcc::Medium, 100).unwrap();
     let dynamic_image = image::load_from_memory(&result).unwrap();
     let size = [dynamic_image.width() as _, dynamic_image.height() as _];
     let image_buffer = dynamic_image.to_luma8();
