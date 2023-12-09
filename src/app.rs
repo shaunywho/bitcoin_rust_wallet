@@ -5,24 +5,21 @@ use bdk::bitcoin::bip32::ExtendedPrivKey;
 use bdk::database::MemoryDatabase;
 use bdk::wallet::{self, AddressIndex};
 use bdk::Wallet;
-use egui::ahash::HashMap;
-use egui::{Context, Image, ImageButton, ImageData, ImageSource, Ui, Visuals};
-use egui_extras::install_image_loaders;
+
+use egui::{Context, Image, ImageButton, ImageData, Ui, Visuals};
+use qrcode::render::unicode::Dense1x2;
 
 use crate::wallet_file_manager::WalletData;
-use egui::TextStyle;
-use egui_extras::image::RetainedImage;
-use std::fs;
-use std::fs::File;
+
 use std::path::Path;
 use std::rc::Rc;
-use std::str::FromStr;
+
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 const FILENAME: &str = "./wallet.txt";
 const IMAGE: &str = "../assets/wallet.png";
-use image::Luma;
-use qrcode::QrCode;
+use image::{ImageBuffer, Luma, Rgb};
+use qrcode::{Color, QrCode};
 use qrcode_generator::QrCodeEcc;
 
 #[derive(PartialEq)]
@@ -260,13 +257,7 @@ impl MyApp {
 
         let img = ui.ctx().load_texture(
             "my-image",
-            get_image(
-                "/Users/shaun/Projects/bitcoin_rust_wallet/assets/qrcode.png",
-                0,
-                0,
-                100,
-                100,
-            ),
+            generate_qrcode_from_address(&self.selected_wallet.as_ref().unwrap().0).unwrap(),
             Default::default(),
         );
 
@@ -369,6 +360,16 @@ fn load_image_from_path(path: &std::path::Path) -> Result<egui::ColorImage, imag
     let image = image_reader?.decode()?;
     let size = [image.width() as _, image.height() as _];
     let image_buffer = image.to_luma8();
+    let pixels = image_buffer.as_flat_samples();
+
+    Ok(egui::ColorImage::from_gray(size, pixels.as_slice()))
+}
+
+pub fn generate_qrcode_from_address(address: &str) -> Result<egui::ColorImage, image::ImageError> {
+    let result = qrcode_generator::to_png_to_vec("Hello world!", QrCodeEcc::Low, 100).unwrap();
+    let dynamic_image = image::load_from_memory(&result).unwrap();
+    let size = [dynamic_image.width() as _, dynamic_image.height() as _];
+    let image_buffer = dynamic_image.to_luma8();
     let pixels = image_buffer.as_flat_samples();
     Ok(egui::ColorImage::from_gray(size, pixels.as_slice()))
 }
