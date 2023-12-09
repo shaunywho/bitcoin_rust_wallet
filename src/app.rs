@@ -4,8 +4,9 @@ use crate::bitcoin_wallet::{
 use bdk::bitcoin::bip32::ExtendedPrivKey;
 use bdk::database::MemoryDatabase;
 use bdk::wallet::{self, AddressIndex};
+use bdk::Wallet;
 use egui::ahash::HashMap;
-use egui::{Context, Image, ImageButton, ImageSource, Visuals};
+use egui::{Context, Image, ImageButton, ImageData, ImageSource, Ui, Visuals};
 use egui_extras::install_image_loaders;
 
 use crate::wallet_file_manager::WalletData;
@@ -20,6 +21,10 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 const FILENAME: &str = "./wallet.txt";
 const IMAGE: &str = "../assets/wallet.png";
+use image::Luma;
+use qrcode::QrCode;
+use qrcode_generator::QrCodeEcc;
+
 #[derive(PartialEq)]
 enum AppState {
     WalletNotAvailable,
@@ -111,6 +116,11 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
+    fn get_selected_wallet(&mut self) -> Rc<Wallet<MemoryDatabase>> {
+        self.wallet_data
+            .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
+            .unwrap()
+    }
     fn check_for_wallet(&mut self) {
         match self.state {
             AppState::WalletNotAvailable => {
@@ -130,10 +140,6 @@ impl MyApp {
     }
 
     fn render_window(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let wallet = self
-            .wallet_data
-            .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
-            .unwrap();
         self.render_sidepanel(ctx, _frame);
         self.render_toppanel(ctx, _frame);
         self.render_centrepanel(ctx, _frame);
@@ -161,68 +167,118 @@ impl MyApp {
 
             ui.label("Wallets");
             let side_panel_state = SidePanelState::Wallet;
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [100.0, 100.0],
-                        egui::ImageButton::new(egui::include_image!("../assets/wallet.png"))
-                            .rounding(5.0)
-                            .selected(self.side_panel_state == side_panel_state),
-                    )
-                    .clicked()
-                {
-                    self.side_panel_state = side_panel_state;
-                }
-            });
+            ui.add_space(10.0);
+            if ui
+                .add_sized(
+                    [100.0, 100.0],
+                    egui::ImageButton::new(egui::include_image!("../assets/wallet.png"))
+                        .rounding(5.0)
+                        .selected(self.side_panel_state == side_panel_state),
+                )
+                .clicked()
+            {
+                self.side_panel_state = side_panel_state;
+            }
+            ui.add_space(10.0);
             let side_panel_state = SidePanelState::Sending;
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [100.0, 100.0],
-                        egui::ImageButton::new(egui::include_image!("../assets/send.png"))
-                            .rounding(5.0)
-                            .selected(self.side_panel_state == side_panel_state),
-                    )
-                    .clicked()
-                {
-                    self.side_panel_state = side_panel_state;
-                }
-            });
+            if ui
+                .add_sized(
+                    [100.0, 100.0],
+                    egui::ImageButton::new(egui::include_image!("../assets/send.png"))
+                        .rounding(5.0)
+                        .selected(self.side_panel_state == side_panel_state),
+                )
+                .clicked()
+            {
+                self.side_panel_state = side_panel_state;
+            }
+
             let side_panel_state = SidePanelState::Receiving;
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [100.0, 100.0],
-                        egui::ImageButton::new(egui::include_image!("../assets/receive.png"))
-                            .rounding(5.0)
-                            .selected(self.side_panel_state == side_panel_state),
-                    )
-                    .clicked()
-                {
-                    self.side_panel_state = side_panel_state;
-                }
-            });
+            ui.add_space(10.0);
+            if ui
+                .add_sized(
+                    [100.0, 100.0],
+                    egui::ImageButton::new(egui::include_image!("../assets/receive.png"))
+                        .rounding(5.0)
+                        .selected(self.side_panel_state == side_panel_state),
+                )
+                .clicked()
+            {
+                self.side_panel_state = side_panel_state;
+            }
+
             let side_panel_state = SidePanelState::Contacts;
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [100.0, 100.0],
-                        egui::ImageButton::new(egui::include_image!("../assets/contacts.png"))
-                            .rounding(5.0)
-                            .selected(self.side_panel_state == side_panel_state),
-                    )
-                    .clicked()
-                {
-                    self.side_panel_state = side_panel_state;
-                }
-            });
+            ui.add_space(10.0);
+            if ui
+                .add_sized(
+                    [100.0, 100.0],
+                    egui::ImageButton::new(egui::include_image!("../assets/contacts.png"))
+                        .rounding(5.0)
+                        .selected(self.side_panel_state == side_panel_state),
+                )
+                .clicked()
+            {
+                self.side_panel_state = side_panel_state;
+            };
         });
     }
+    pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
+        let wallet = self.get_selected_wallet();
+        ui.horizontal(|ui| {
+            let wallet_element = self
+                .wallet_data
+                .wallets
+                .get(&self.selected_wallet.clone().unwrap().0)
+                .unwrap();
+            ui.label(format!(
+                "Wallet Name: {}",
+                wallet_element.wallet_name.to_owned()
+            ));
+            // let wallet_name = self
+            if ui.button("Rename Wallet").clicked() {
+                self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
+                self.string_scratchpad = wallet_element.wallet_name.to_string();
+            }
+        });
+        ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()));
+        ui.add_space(50.0);
+        let address = wallet.get_address(AddressIndex::Peek(0));
+        ui.label(format!("Public Key: {:?}", address.unwrap().address));
+    }
+    pub fn render_sending_panel(&mut self, ui: &mut Ui) {
+        let wallet = self.get_selected_wallet();
+        ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()));
+        ui.add_space(50.0);
+        ui.label("How Much?");
+        ui.label("Description");
+    }
+    pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
+        let wallet = self.get_selected_wallet();
+        let address = wallet.get_address(AddressIndex::Peek(0));
+        ui.label(format!("Public Key: {:?}", address.unwrap().address));
+        // Encode some data into bits.
+
+        let img = ui.ctx().load_texture(
+            "my-image",
+            get_image(
+                "/Users/shaun/Projects/bitcoin_rust_wallet/assets/qrcode.png",
+                0,
+                0,
+                100,
+                100,
+            ),
+            Default::default(),
+        );
+
+        ui.add(egui::Image::from_texture(&img));
+    }
+
+    pub fn render_contacts_panel(&mut self, ui: &mut Ui) {}
+
     pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            match self.dialog_box {
-                None => (),
-                _ => ui.set_enabled(false),
+            if self.dialog_box.is_some() {
+                ui.set_enabled(false)
             }
 
             if self.state == AppState::WalletNotAvailable {
@@ -231,40 +287,13 @@ impl MyApp {
                     self.dialog_box = Some(DialogBoxEnum::NewMnemonic);
                 }
             } else {
-                // if ui.button("Addre"))
-                ui.label(format!(
-                    "Secret Key: {}",
-                    &mut self.selected_wallet.clone().unwrap().0
-                ));
-                ui.add_space(50.0);
-                let wallet = self
-                    .wallet_data
-                    .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
-                    .unwrap();
-
-                ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()));
-                ui.add_space(50.0);
-                let address = wallet.get_address(AddressIndex::Peek(0));
-                ui.label(format!("Public Key: {:?}", address.unwrap().address));
-                ui.add_space(50.0);
-            }
-
-            ui.horizontal(|ui| {
-                let wallet_element = self
-                    .wallet_data
-                    .wallets
-                    .get(&self.selected_wallet.clone().unwrap().0)
-                    .unwrap();
-                ui.label(format!(
-                    "Wallet Name: {}",
-                    wallet_element.wallet_name.to_owned()
-                ));
-                // let wallet_name = self
-                if ui.button("Rename Wallet").clicked() {
-                    self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
-                    self.string_scratchpad = wallet_element.wallet_name.to_string();
+                match self.side_panel_state {
+                    SidePanelState::Wallet => self.render_wallet_panel(ui),
+                    SidePanelState::Sending => self.render_sending_panel(ui),
+                    SidePanelState::Receiving => self.render_receiving_panel(ui),
+                    SidePanelState::Contacts => self.render_contacts_panel(ui),
                 }
-            });
+            }
         });
     }
 
@@ -329,13 +358,17 @@ impl MyApp {
     }
 }
 
+pub fn get_image(filepath: &str, ix: u32, iy: u32, iw: u32, ih: u32) -> ImageData {
+    let fp = Path::new(filepath);
+    let color_image = load_image_from_path(&fp).unwrap();
+    let img = ImageData::from(color_image);
+    img
+}
 fn load_image_from_path(path: &std::path::Path) -> Result<egui::ColorImage, image::ImageError> {
-    let image = image::io::Reader::open(path)?.decode()?;
+    let image_reader = image::io::Reader::open(path);
+    let image = image_reader?.decode()?;
     let size = [image.width() as _, image.height() as _];
-    let image_buffer = image.to_rgba8();
+    let image_buffer = image.to_luma8();
     let pixels = image_buffer.as_flat_samples();
-    Ok(egui::ColorImage::from_rgba_unmultiplied(
-        size,
-        pixels.as_slice(),
-    ))
+    Ok(egui::ColorImage::from_gray(size, pixels.as_slice()))
 }
