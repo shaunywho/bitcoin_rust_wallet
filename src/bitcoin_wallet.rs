@@ -60,14 +60,28 @@ pub fn get_transactions(wallet: &Wallet<MemoryDatabase>) {
     println!("{:?}", wallet.list_transactions(true).unwrap());
 }
 
-pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
+pub fn get_balance(wallet: &Wallet<MemoryDatabase>) -> u64 {
+    let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default());
+    let balance = wallet.get_balance().unwrap();
+    return balance.confirmed;
+}
+
+pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
     let mut wallet = Wallet::new(
         Bip84(xprv.clone(), KeychainKind::External),
         Some(Bip84(xprv, KeychainKind::Internal)),
         Network::Testnet,
         MemoryDatabase::new(),
-    );
+    )?;
+    return Ok(wallet);
+}
 
+pub fn generate_wallet_rc_obj(
+    xprv: ExtendedPrivKey,
+) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
+    let wallet = generate_wallet(xprv);
     return Ok(Rc::new(wallet?));
 }
 
@@ -135,7 +149,7 @@ mod tests {
 
     use bdk::bitcoin::{bip32::ExtendedPrivKey, Network};
 
-    use crate::bitcoin_wallet::{generate_wallet, generate_xpriv};
+    use crate::bitcoin_wallet::{generate_wallet_rc_obj, generate_xpriv};
 
     #[test]
     fn test_generating_wallet() {
@@ -145,9 +159,9 @@ mod tests {
         let mnemonic_1 = &String::from(mnemonic_0)[..];
         let xkey_0 = generate_xpriv(mnemonic_0).unwrap();
         let xkey_1 = generate_xpriv(mnemonic_0.clone()).unwrap();
-        let wallet_0 = generate_wallet(xkey_0).unwrap();
+        let wallet_0 = generate_wallet_rc_obj(xkey_0).unwrap();
 
-        let xpriv = xkey_1.into_xprv(Network::Testnet).unwrap();
+        let xpriv = xkey_1;
         let xpriv_str = xpriv.to_string();
         println!("{}", &xpriv_str);
         let xpriv_1 = ExtendedPrivKey::from_str(&xpriv_str[..]).unwrap();

@@ -14,7 +14,7 @@ use std::io::Write;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::bitcoin_wallet::generate_wallet;
+use crate::bitcoin_wallet::generate_wallet_rc_obj;
 const FILENAME: &str = "./wallet.txt";
 
 pub struct WalletData {
@@ -74,7 +74,7 @@ impl WalletData {
                     let xpriv = ExtendedPrivKey::from_str(private_key_str)?;
                     self.wallets.insert(
                         private_key_str.to_owned(),
-                        WalletElement::new(wallet_name.to_string(), generate_wallet(xpriv)?),
+                        WalletElement::new(wallet_name.to_string(), generate_wallet_rc_obj(xpriv)?),
                     );
                 }
             }
@@ -98,7 +98,7 @@ impl WalletData {
         } else {
             self.wallets.insert(
                 wallet_nameing.clone(),
-                WalletElement::new("New Wallet".to_string(), generate_wallet(xprv)?),
+                WalletElement::new("New Wallet".to_string(), generate_wallet_rc_obj(xprv)?),
             );
             self.append_to_wallet_file(&wallet_nameing)?;
         }

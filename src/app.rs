@@ -1,23 +1,30 @@
 use crate::bitcoin_wallet::{
-    bitcoin_test, generate_mnemonic_string, generate_wallet, generate_xpriv, get_transactions,
+    bitcoin_test, generate_mnemonic_string, generate_wallet, generate_xpriv, get_balance,
+    get_transactions,
 };
 use bdk::bitcoin::bip32::ExtendedPrivKey;
+use bdk::bitcoin::Transaction;
+use bdk::blockchain::ElectrumBlockchain;
 use bdk::database::MemoryDatabase;
+use bdk::electrum_client::Client;
 use bdk::wallet::{self, AddressIndex};
-use bdk::Wallet;
-
-use egui::{Context, Image, ImageButton, ImageData, Ui, Visuals};
-use qrcode::render::unicode::Dense1x2;
+use bdk::Balance;
+use bdk::{SyncOptions, Wallet};
 
 use crate::wallet_file_manager::WalletData;
+use egui::{Context, Image, ImageButton, ImageData, Ui, Visuals};
+use qrcode::render::unicode::Dense1x2;
+use std::str::FromStr;
+use std::thread;
 
 use std::path::Path;
 use std::rc::Rc;
-
 use std::sync::mpsc;
 use std::thread::JoinHandle;
+use std::time::Instant;
 const FILENAME: &str = "./wallet.txt";
 const IMAGE: &str = "../assets/wallet.png";
+
 use image::{ImageBuffer, Luma, Rgb};
 use qrcode::{Color, QrCode};
 use qrcode_generator::QrCodeEcc;
@@ -52,6 +59,7 @@ struct WalletApp {
 
 pub struct MyApp {
     state: AppState,
+    blockchain: ElectrumBlockchain,
     side_panel_state: SidePanelState,
     wallet_data: WalletData,
     selected_wallet: Option<(String, Rc<wallet::Wallet<MemoryDatabase>>)>,
@@ -59,17 +67,23 @@ pub struct MyApp {
     on_done_tx: mpsc::SyncSender<()>,
     on_done_rc: mpsc::Receiver<()>,
     amount_to_send: String,
-    wallet_amount: usize,
-    string_scratchpad: String,
+    balance: Option<Balance>,
+    transactions: Option<Vec<Transaction>>,
+
+    string_scratchpad_0: String,
+    string_scratchpad_1: String,
     dialog_box: Option<DialogBoxEnum>,
 }
 
 impl MyApp {
     pub fn new() -> Self {
         let mut state = AppState::WalletNotAvailable;
+        let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+        let blockchain = ElectrumBlockchain::from(client);
         let mut side_panel_state = SidePanelState::Wallet;
         let mut wallet_data = WalletData::new(FILENAME);
         let mut selected_wallet = Option::None;
+
         if wallet_data.initialise_from_wallet_file().unwrap() {
             state = AppState::WalletAvailable;
             let selected_wallet_xpriv_str = wallet_data.get_first_wallet_xpriv_str();
@@ -83,12 +97,15 @@ impl MyApp {
         let threads = Vec::with_capacity(3);
         let (on_done_tx, on_done_rc) = mpsc::sync_channel(0);
         let amount_to_send = format!("{}", 0);
-        let wallet_amount = 0;
-        let string_scratchpad = String::new();
+        let balance = None;
+        let transactions = None;
+        let string_scratchpad_0 = String::new();
+        let string_scratchpad_1 = String::new();
         let dialog_box = None;
 
         let mut slf = Self {
             state,
+            blockchain,
             side_panel_state,
             wallet_data,
             selected_wallet,
@@ -96,8 +113,10 @@ impl MyApp {
             on_done_tx,
             on_done_rc,
             amount_to_send,
-            wallet_amount,
-            string_scratchpad,
+            balance,
+            transactions,
+            string_scratchpad_0,
+            string_scratchpad_1,
             dialog_box,
         };
 
@@ -112,7 +131,23 @@ impl eframe::App for MyApp {
     }
 }
 
+struct WalletSyncWorkerState {
+    balance: u64,
+    transactions: String,
+    public_key: String,
+    private_key: String,
+    now: Instant,
+}
+
 impl MyApp {
+    // fn start_wallet_syncing_worker(&mut self) {
+    //     let priv_key = ExtendedPrivKey::from_str(&self.selected_wallet.clone().unwrap().0).unwrap();
+    //     let wallet = generate_wallet(priv_key).unwrap();
+
+    //     thread::spawn(|| loop {
+    //         wallet.sync(&self.blockchain, SyncOptions::default());
+    //     });
+    // }
     fn get_selected_wallet(&mut self) -> Rc<Wallet<MemoryDatabase>> {
         self.wallet_data
             .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
@@ -234,20 +269,33 @@ impl MyApp {
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
                 self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
-                self.string_scratchpad = wallet_element.wallet_name.to_string();
+                self.string_scratchpad_0 = wallet_element.wallet_name.to_string();
             }
         });
-        ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()));
+        ui.label(format!("Wallet Balance: {:?}", get_balance(&wallet)));
         ui.add_space(50.0);
-        let address = wallet.get_address(AddressIndex::Peek(0));
-        ui.label(format!("Public Key: {:?}", address.unwrap().address));
+        let public_key = wallet
+            .get_address(AddressIndex::Peek(0))
+            .unwrap()
+            .to_string();
+
+        ui.label(format!("Public Key: {:?}", &public_key));
+        if ui.button("Copy").clicked() {
+            ui.output_mut(|o| o.copied_text = public_key);
+        };
     }
     pub fn render_sending_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet();
-        ui.label(format!("Wallet Balance: {:?}", wallet.get_balance()));
+        ui.label(format!("Wallet Balance: {:?}", get_balance(&wallet)));
         ui.add_space(50.0);
-        ui.label("How Much?");
+        ui.label("Amount");
+        let mut amount = "0.0".to_string();
+        ui.text_edit_singleline(&mut amount);
+        ui.label("BTC");
+        let mut description = "Enter Description Here".to_string();
         ui.label("Description");
+        ui.add_space(50.0);
+        ui.text_edit_singleline(&mut description);
     }
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet();
@@ -277,7 +325,7 @@ impl MyApp {
 
             if self.state == AppState::WalletNotAvailable {
                 if ui.button("Create Wallet").clicked() {
-                    self.string_scratchpad = generate_mnemonic_string().unwrap();
+                    self.string_scratchpad_0 = generate_mnemonic_string().unwrap();
                     self.dialog_box = Some(DialogBoxEnum::NewMnemonic);
                 }
             } else {
@@ -311,11 +359,11 @@ impl MyApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(self.string_scratchpad.clone());
+                    ui.label(self.string_scratchpad_0.clone());
                 });
                 ui.horizontal(|ui| {
                     if ui.button("Accept").clicked() {
-                        let xkey = generate_xpriv(&self.string_scratchpad).unwrap();
+                        let xkey = generate_xpriv(&self.string_scratchpad_0).unwrap();
                         self.wallet_data.add_wallet(xkey);
                         self.dialog_box = None;
                     }
@@ -328,7 +376,7 @@ impl MyApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.string_scratchpad);
+                    ui.text_edit_singleline(&mut self.string_scratchpad_0);
                 });
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
@@ -340,10 +388,10 @@ impl MyApp {
                             .wallets
                             .get_mut(&self.selected_wallet.as_mut().unwrap().0)
                             .unwrap()
-                            .wallet_name = self.string_scratchpad.clone();
+                            .wallet_name = self.string_scratchpad_0.clone();
                         self.wallet_data.rename_wallet(
                             &self.selected_wallet.clone().unwrap().0,
-                            &self.string_scratchpad,
+                            &self.string_scratchpad_0,
                         );
                         self.dialog_box = None;
                     }
