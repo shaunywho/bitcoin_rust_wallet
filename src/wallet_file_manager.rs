@@ -1,8 +1,15 @@
 use bdk::bitcoin::bip32::ExtendedPrivKey;
 use bdk::bitcoin::Network;
+use bdk::bitcoin::Transaction;
+use bdk::blockchain::ElectrumBlockchain;
 use bdk::database::MemoryDatabase;
+use bdk::electrum_client::Client;
 use bdk::keys::ExtendedKey;
+use bdk::wallet::AddressIndex;
 use bdk::wallet::Wallet;
+use bdk::Balance;
+use bdk::SyncOptions;
+use bdk::TransactionDetails;
 use csv::ReaderBuilder;
 
 use chrono::{DateTime, Duration, Utc};
@@ -14,6 +21,7 @@ use std::io::Write;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_wallet_rc_obj;
 const FILENAME: &str = "./wallet.txt";
 
@@ -21,25 +29,41 @@ pub struct WalletData {
     pub wallets: HashMap<String, WalletElement>,
     filename: String,
 }
-
+#[derive(Clone)]
 pub struct WalletElement {
     pub wallet_name: String,
-    pub wallet_obj: Rc<Wallet<MemoryDatabase>>,
+    pub address: String,
+    pub balance: bdk::Balance,
+    pub transactions: Vec<TransactionDetails>,
+    // pub wallet_obj: Wallet<MemoryDatabase>,
 }
 
 impl WalletElement {
-    pub fn new(wallet_name: String, wallet_obj: Rc<Wallet<MemoryDatabase>>) -> Self {
+    pub fn new(priv_key: &str, wallet_name: &str) -> Self {
+        let wallet_name = wallet_name.to_string();
+        let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+        let blockchain = ElectrumBlockchain::from(client);
+        let wallet = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
+        wallet.sync(&blockchain, SyncOptions::default());
+        let balance = wallet.get_balance().unwrap();
+        let address = wallet
+            .get_address(AddressIndex::Peek(0))
+            .unwrap()
+            .to_string();
+        let transactions = wallet.list_transactions(true).unwrap();
+
         return Self {
             wallet_name: wallet_name,
-            wallet_obj: wallet_obj,
+            balance: balance,
+            address: address,
+            transactions: transactions,
         };
+    }
+    pub fn get_wallet_balance(&mut self) -> String {
+        return format!("{:?}", self.balance);
     }
 }
 
-pub struct WalletValue {
-    amount: usize,
-    data: Utc,
-}
 impl WalletData {
     pub fn new(filename: &str) -> Self {
         let mut wallet_data = Self {
@@ -74,7 +98,7 @@ impl WalletData {
                     let xpriv = ExtendedPrivKey::from_str(private_key_str)?;
                     self.wallets.insert(
                         private_key_str.to_owned(),
-                        WalletElement::new(wallet_name.to_string(), generate_wallet_rc_obj(xpriv)?),
+                        WalletElement::new(private_key_str, wallet_name),
                     );
                 }
             }
@@ -82,25 +106,25 @@ impl WalletData {
         }
         Ok(found_record)
     }
-    pub fn get_wallet_from_xpriv_str(
+    pub fn get_wallet_element_from_xpriv_str(
         &mut self,
         xprv_str: String,
-    ) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
+    ) -> Result<WalletElement, anyhow::Error> {
         let xprv_str = &xprv_str[..];
-        let wallet_element = self.wallets.get_mut(xprv_str).unwrap();
-        return Ok(Rc::clone(&wallet_element.wallet_obj));
+        let wallet_element = self.wallets[xprv_str].clone();
+        return Ok(wallet_element);
     }
 
     pub fn add_wallet(&mut self, xprv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
-        let wallet_nameing = xprv.to_string();
-        if self.wallets.contains_key(&wallet_nameing) {
+        let priv_key = xprv.to_string();
+        if self.wallets.contains_key(&priv_key) {
             panic!("Wallet already exists");
         } else {
             self.wallets.insert(
-                wallet_nameing.clone(),
-                WalletElement::new("New Wallet".to_string(), generate_wallet_rc_obj(xprv)?),
+                priv_key.clone(),
+                WalletElement::new(&priv_key, "New Wallet"),
             );
-            self.append_to_wallet_file(&wallet_nameing)?;
+            self.append_to_wallet_file(&priv_key)?;
         }
 
         Ok(())

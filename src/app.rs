@@ -11,7 +11,7 @@ use bdk::wallet::{self, AddressIndex};
 use bdk::Balance;
 use bdk::{SyncOptions, Wallet};
 
-use crate::wallet_file_manager::WalletData;
+use crate::wallet_file_manager::{WalletData, WalletElement};
 use egui::{Context, Image, ImageButton, ImageData, Ui, Visuals};
 use qrcode::render::unicode::Dense1x2;
 use std::str::FromStr;
@@ -62,13 +62,10 @@ pub struct MyApp {
     blockchain: ElectrumBlockchain,
     side_panel_state: SidePanelState,
     wallet_data: WalletData,
-    selected_wallet: Option<(String, Rc<wallet::Wallet<MemoryDatabase>>)>,
+    selected_wallet: Option<(String, WalletElement)>,
     threads: Vec<(JoinHandle<()>, mpsc::SyncSender<egui::Context>)>,
     on_done_tx: mpsc::SyncSender<()>,
     on_done_rc: mpsc::Receiver<()>,
-    amount_to_send: String,
-    balance: Option<Balance>,
-    transactions: Option<Vec<Transaction>>,
 
     string_scratchpad_0: String,
     string_scratchpad_1: String,
@@ -90,15 +87,13 @@ impl MyApp {
             selected_wallet = Option::Some((
                 selected_wallet_xpriv_str.clone(),
                 wallet_data
-                    .get_wallet_from_xpriv_str(selected_wallet_xpriv_str)
+                    .get_wallet_element_from_xpriv_str(selected_wallet_xpriv_str)
                     .unwrap(),
             ))
         };
         let threads = Vec::with_capacity(3);
         let (on_done_tx, on_done_rc) = mpsc::sync_channel(0);
-        let amount_to_send = format!("{}", 0);
-        let balance = None;
-        let transactions = None;
+
         let string_scratchpad_0 = String::new();
         let string_scratchpad_1 = String::new();
         let dialog_box = None;
@@ -112,9 +107,6 @@ impl MyApp {
             threads,
             on_done_tx,
             on_done_rc,
-            amount_to_send,
-            balance,
-            transactions,
             string_scratchpad_0,
             string_scratchpad_1,
             dialog_box,
@@ -148,9 +140,9 @@ impl MyApp {
     //         wallet.sync(&self.blockchain, SyncOptions::default());
     //     });
     // }
-    fn get_selected_wallet(&mut self) -> Rc<Wallet<MemoryDatabase>> {
+    fn get_selected_wallet(&mut self) -> WalletElement {
         self.wallet_data
-            .get_wallet_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
+            .get_wallet_element_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
             .unwrap()
     }
     fn check_for_wallet(&mut self) {
@@ -161,9 +153,7 @@ impl MyApp {
                     let selected_wallet_xpriv_str = self.wallet_data.get_first_wallet_xpriv_str();
                     self.selected_wallet = Option::Some((
                         selected_wallet_xpriv_str.clone(),
-                        self.wallet_data
-                            .get_wallet_from_xpriv_str(selected_wallet_xpriv_str)
-                            .unwrap(),
+                        self.get_selected_wallet(),
                     ));
                 }
             }
@@ -255,7 +245,7 @@ impl MyApp {
         });
     }
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet();
+        let mut wallet = self.get_selected_wallet();
         ui.horizontal(|ui| {
             let wallet_element = self
                 .wallet_data
@@ -272,12 +262,9 @@ impl MyApp {
                 self.string_scratchpad_0 = wallet_element.wallet_name.to_string();
             }
         });
-        ui.label(format!("Wallet Balance: {:?}", get_balance(&wallet)));
+        ui.label(format!("Wallet Balance: {:?}", wallet.get_wallet_balance()));
         ui.add_space(50.0);
-        let public_key = wallet
-            .get_address(AddressIndex::Peek(0))
-            .unwrap()
-            .to_string();
+        let public_key = wallet.address;
 
         ui.label(format!("Public Key: {:?}", &public_key));
         if ui.button("Copy").clicked() {
@@ -285,8 +272,8 @@ impl MyApp {
         };
     }
     pub fn render_sending_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet();
-        ui.label(format!("Wallet Balance: {:?}", get_balance(&wallet)));
+        let mut wallet = self.get_selected_wallet();
+        ui.label(format!("Wallet Balance: {:?}", "1"));
         ui.add_space(50.0);
         ui.label("Amount");
         let mut amount = "0.0".to_string();
@@ -298,17 +285,14 @@ impl MyApp {
         ui.text_edit_singleline(&mut description);
     }
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet();
-        let address = wallet.get_address(AddressIndex::Peek(0));
-        ui.label(format!(
-            "Public Key: {:?}",
-            address.as_ref().unwrap().address
-        ));
+        let mut wallet = self.get_selected_wallet();
+        let address = wallet.address;
+        ui.label(format!("Public Key: {:?}", address));
         // Encode some data into bits.
 
         let img = ui.ctx().load_texture(
             "my-image",
-            generate_qrcode_from_address(&address.unwrap().address.to_string()).unwrap(),
+            generate_qrcode_from_address(&address).unwrap(),
             Default::default(),
         );
 

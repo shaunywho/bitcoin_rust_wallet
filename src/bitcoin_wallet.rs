@@ -65,6 +65,7 @@ pub fn get_balance(wallet: &Wallet<MemoryDatabase>) -> u64 {
     let blockchain = ElectrumBlockchain::from(client);
     wallet.sync(&blockchain, SyncOptions::default());
     let balance = wallet.get_balance().unwrap();
+
     return balance.confirmed;
 }
 
