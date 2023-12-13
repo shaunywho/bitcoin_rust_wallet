@@ -10,7 +10,7 @@
 use bdk::bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use bdk::bitcoin::network;
 use bdk::template::{Bip44, Bip84};
-use bdk::{self, KeychainKind};
+use bdk::{self, Balance, KeychainKind};
 use bdk::{
     bitcoin::secp256k1::Secp256k1,
     bitcoin::Address,
@@ -84,6 +84,24 @@ pub fn generate_wallet_rc_obj(
 ) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
     let wallet = generate_wallet(xprv);
     return Ok(Rc::new(wallet?));
+}
+
+pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, amount: u64) {
+    let recipient_address = Address::from_str(recipient_str)
+        .unwrap()
+        .require_network(Network::Testnet)
+        .unwrap();
+    let mut tx_builder = wallet.build_tx();
+    tx_builder
+        .add_recipient(
+            recipient_address.script_pubkey(),
+            // (balance.trusted_pending + balance.confirmed) / 2,
+            amount,
+        )
+        .enable_rbf();
+    let (mut psbt, tx_details) = tx_builder.finish().unwrap();
+
+    let finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
 }
 
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
