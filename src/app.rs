@@ -29,6 +29,14 @@ enum SidePanelState {
     Receiving,
     Contacts,
 }
+
+// struct DialogBox {
+//     dialog_box_enum: DialogBoxEnum,
+//     title: &'static str,
+//     message: Option<String>,
+//     line_edit: bool,
+//     optional: bool,
+// }
 #[derive(Clone)]
 enum DialogBoxEnum {
     NewMnemonic {
@@ -71,58 +79,54 @@ pub struct MyApp {
     transactions: Option<Vec<TransactionDetails>>,
 }
 
-trait DialogBox {
-    fn render_dialog_box(&mut self, app: &mut MyApp, ctx: &egui::Context) {}
-
-    fn accept_process(&mut self, app: &mut MyApp) {}
-}
-
-impl DialogBox for DialogBoxEnum {
-    fn accept_process(&mut self, app: &mut MyApp) {
-        match self {
-            DialogBoxEnum::NewMnemonic { message, .. } => {
-                let xkey = generate_xpriv(&message.clone().unwrap()).unwrap();
-                let _ = app.wallet_data.add_wallet(xkey);
-                app.dialog_box = None;
-            }
-            DialogBoxEnum::ChangeWalletName { .. } => {
-                app.wallet_data
-                    .wallets
-                    .get_mut(&app.selected_wallet.as_mut().unwrap().0)
-                    .unwrap()
-                    .wallet_name = app.string_scratchpad.clone();
-                let _ = app.wallet_data.rename_wallet(
-                    &app.selected_wallet.clone().unwrap().0,
-                    &app.string_scratchpad,
-                );
-                app.dialog_box = None;
-            }
-            DialogBoxEnum::ConfirmSend { .. } => {
-                // Implement the logic for accepting ConfirmSend
-                println!("HI");
+impl MyApp {
+    fn accept_process(&mut self) {
+        if let Some(dialog_box) = &self.dialog_box {
+            match dialog_box {
+                DialogBoxEnum::NewMnemonic { message, .. } => {
+                    let xkey = generate_xpriv(&message.clone().unwrap()).unwrap();
+                    let _ = self.wallet_data.add_wallet(xkey);
+                    self.dialog_box = None;
+                }
+                DialogBoxEnum::ChangeWalletName { .. } => {
+                    self.wallet_data
+                        .wallets
+                        .get_mut(&self.selected_wallet.as_mut().unwrap().0)
+                        .unwrap()
+                        .wallet_name = self.string_scratchpad.clone();
+                    let _ = self.wallet_data.rename_wallet(
+                        &self.selected_wallet.clone().unwrap().0,
+                        &self.string_scratchpad,
+                    );
+                    self.dialog_box = None;
+                }
+                DialogBoxEnum::ConfirmSend { .. } => {
+                    // Implement the logic for accepting ConfirmSend
+                    println!("HI");
+                }
             }
         }
     }
 
-    fn render_dialog_box(&mut self, app: &mut MyApp, ctx: &egui::Context) {
-        if let Some(dialog_box) = app.dialog_box.clone() {
+    fn render_dialog_box(&mut self, ctx: &egui::Context) {
+        if let Some(dialog_box) = self.dialog_box.clone() {
             match dialog_box {
                 DialogBoxEnum::NewMnemonic {
                     title,
                     message,
-                    mut line_edit,
+                    line_edit,
                     optional,
                 }
                 | DialogBoxEnum::ChangeWalletName {
                     title,
                     message,
-                    mut line_edit,
+                    line_edit,
                     optional,
                 }
                 | DialogBoxEnum::ConfirmSend {
                     title,
                     message,
-                    mut line_edit,
+                    line_edit,
                     optional,
                 } => {
                     egui::Window::new(title)
@@ -136,18 +140,18 @@ impl DialogBox for DialogBoxEnum {
                             }
                             if line_edit {
                                 ui.vertical_centered(|ui| {
-                                    ui.text_edit_singleline(&mut app.string_scratchpad);
+                                    ui.text_edit_singleline(&mut self.string_scratchpad);
                                 });
                             }
                             ui.vertical_centered(|ui| {
                                 if optional {
                                     if ui.button("Cancel").clicked() {
-                                        app.dialog_box = None;
+                                        self.dialog_box = None;
                                     }
                                 }
 
                                 if ui.button("Accept").clicked() {
-                                    self.accept_process(app);
+                                    self.accept_process();
                                 }
                             });
                         });
@@ -270,8 +274,8 @@ impl MyApp {
         self.render_toppanel(ctx, _frame);
         self.render_centrepanel(ctx, _frame);
 
-        if let Some(dialog_box) = &mut self.dialog_box.clone() {
-            dialog_box.render_dialog_box(self, ctx);
+        if let Some(_) = self.dialog_box {
+            self.render_dialog_box(ctx);
         }
     }
     pub fn render_sidepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
