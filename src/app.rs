@@ -62,7 +62,7 @@ pub struct MyApp {
 }
 
 impl MyApp {
-    fn accept_process(&mut self, line_edit_option: Option<String>) {
+    fn accept_process(&mut self, line_edit: Option<String>) {
         if let Some(dialog_box) = &self.dialog_box {
             match dialog_box.dialog_box_enum {
                 DialogBoxEnum::NewMnemonic => {
@@ -71,8 +71,13 @@ impl MyApp {
                     self.dialog_box = None;
                 }
                 DialogBoxEnum::ChangeWalletName => {
-                    self.selected_wallet.as_mut().unwrap().1.wallet_name =
-                        self.rename_wallet_string.clone();
+                    self.rename_wallet_string = line_edit.unwrap();
+
+                    self.wallet_data
+                        .wallets
+                        .get_mut(&self.selected_wallet.as_mut().unwrap().0)
+                        .unwrap()
+                        .wallet_name = self.rename_wallet_string.clone();
                     self.wallet_data.rename_wallet(
                         &self.selected_wallet.clone().unwrap().0,
                         &self.rename_wallet_string,
@@ -98,9 +103,11 @@ impl MyApp {
                         ui.label(message);
                     });
                 }
+                let mut edited_line: Option<String> = None;
                 if let Some(line_edit) = &mut self.dialog_box.as_mut().unwrap().line_edit {
                     ui.vertical_centered(|ui| {
                         ui.text_edit_singleline(line_edit);
+                        edited_line = Some(line_edit.to_string());
                     });
                 }
                 ui.vertical_centered(|ui| {
@@ -111,7 +118,7 @@ impl MyApp {
                     }
 
                     if ui.button("Accept").clicked() {
-                        self.accept_process();
+                        self.accept_process(edited_line);
                     }
                 });
             });
@@ -202,9 +209,9 @@ impl MyApp {
 }
 
 impl MyApp {
-    fn get_selected_wallet(&mut self) -> WalletElement {
+    fn get_selected_wallet_element(&mut self) -> WalletElement {
         self.wallet_data
-            .get_wallet_element_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
+            .get_wallet_element(&self.selected_wallet.as_ref().unwrap().0)
     }
     fn update_wallet_state(&mut self) {
         match self.state {
@@ -303,7 +310,7 @@ impl MyApp {
         });
     }
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet();
+        let wallet = self.get_selected_wallet_element();
 
         ui.vertical_centered(|ui| {
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
@@ -314,7 +321,7 @@ impl MyApp {
                     dialog_box_enum: DialogBoxEnum::ChangeWalletName,
                     title: "Change Wallet Name",
                     message: Some("Enter new wallet name".into()),
-                    line_edit: Some(self.rename_wallet_string),
+                    line_edit: Some(self.rename_wallet_string.clone()),
                     optional: true,
                 });
             }
@@ -359,7 +366,7 @@ impl MyApp {
         }
     }
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet();
+        let wallet = self.get_selected_wallet_element();
         let address = wallet.address;
         ui.label(format!("Public Key: {:?}", address));
         // Encode some data into bits.
@@ -393,15 +400,6 @@ impl MyApp {
                             line_edit: None,
                             optional: false,
                         });
-                        // self.wallet_data
-                        //     .wallets
-                        //     .get_mut(&self.selected_wallet.as_mut().unwrap().0)
-                        //     .unwrap()
-                        //     .wallet_name = self.rename_wallet_string.clone();
-                        // let _ = self.wallet_data.rename_wallet(
-                        //     &self.selected_wallet.clone().unwrap().0,
-                        //     &self.rename_wallet_string,
-                        // );
                     }
                 }
                 WalletFileState::WalletNotInitialised => {}

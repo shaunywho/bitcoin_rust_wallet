@@ -141,11 +141,11 @@ impl WalletData {
         }
         Ok(found_record)
     }
-    pub fn get_wallet_element_from_xpriv_str(&mut self, xprv_str: String) -> WalletElement {
-        let xprv_str = &xprv_str[..];
-        let wallet_element = self.wallets[xprv_str].clone();
-        return wallet_element;
-    }
+    // pub fn get_wallet_element_from_xpriv_str(&mut self, xprv_str: String) -> WalletElement {
+    //     let xprv_str = &xprv_str[..];
+    //     let wallet_element = self.wallets[xprv_str].clone();
+    //     return wallet_element;
+    // }
 
     pub fn add_wallet(&mut self, xprv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
         let priv_key = xprv.to_string();
