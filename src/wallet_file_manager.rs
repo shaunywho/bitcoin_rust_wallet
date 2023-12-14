@@ -1,10 +1,9 @@
 use bdk::bitcoin::bip32::ExtendedPrivKey;
-use bdk::bitcoin::Network;
-use bdk::bitcoin::Transaction;
+
 use bdk::blockchain::ElectrumBlockchain;
 use bdk::database::MemoryDatabase;
 use bdk::electrum_client::Client;
-use bdk::keys::ExtendedKey;
+
 use bdk::wallet::AddressIndex;
 use bdk::wallet::Wallet;
 use bdk::Balance;
@@ -12,19 +11,18 @@ use bdk::SyncOptions;
 use bdk::TransactionDetails;
 use csv::ReaderBuilder;
 
-use chrono::{DateTime, Duration, Utc};
-use egui::Memory;
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::rc::Rc;
+
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
 
 use crate::bitcoin_wallet::generate_wallet;
-use crate::bitcoin_wallet::generate_wallet_rc_obj;
+
 const FILENAME: &str = "./wallet.txt";
 
 pub struct SyncData {
@@ -53,8 +51,7 @@ impl WalletElement {
         wallet.sync(&blockchain, SyncOptions::default());
     }
     pub fn new(priv_key: &str, wallet_name: &str) -> Self {
-        let xpriv = ExtendedPrivKey::from_str(priv_key);
-        let mut wallet = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
+        let wallet = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
         WalletElement::sync(&wallet);
         let wallet_name = wallet_name.to_string();
 
@@ -95,8 +92,17 @@ impl WalletElement {
 }
 
 impl WalletData {
+    pub fn does_file_exist(&self) -> bool {
+        let result = fs::metadata(FILENAME);
+        if let Ok(metadata) = result {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     pub fn new(filename: &str) -> Self {
-        let mut wallet_data = Self {
+        let wallet_data = Self {
             wallets: HashMap::new(),
             filename: filename.to_string(),
         };
@@ -125,7 +131,6 @@ impl WalletData {
                 let wallet_name = record[1].trim();
 
                 if !private_key_str.is_empty() {
-                    let xpriv = ExtendedPrivKey::from_str(private_key_str)?;
                     self.wallets.insert(
                         private_key_str.to_owned(),
                         WalletElement::new(private_key_str, wallet_name),
@@ -147,10 +152,6 @@ impl WalletData {
         if self.wallets.contains_key(&priv_key) {
             panic!("Wallet already exists");
         } else {
-            self.wallets.insert(
-                priv_key.clone(),
-                WalletElement::new(&priv_key, "New Wallet"),
-            );
             self.append_to_wallet_file(&priv_key)?;
         }
 
@@ -159,8 +160,7 @@ impl WalletData {
 
     fn append_to_wallet_file(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
-        let wallet_element = &self.wallets[priv_key];
-        if let Err(e) = writeln!(file, "{}, {}", priv_key, wallet_element.wallet_name) {
+        if let Err(e) = writeln!(file, "{}, {}", priv_key, "New Wallet Name") {
             eprintln!("Couldn't write to file: {}", e);
         }
         Ok(())
@@ -202,6 +202,10 @@ impl WalletData {
     pub fn get_first_wallet_xpriv_str(&mut self) -> String {
         let first_wallet = self.wallets.keys().nth(0).unwrap().to_owned();
         return first_wallet;
+    }
+
+    pub fn get_wallet_element(&self, xpriv_str: &str) -> WalletElement {
+        return self.wallets[xpriv_str].clone();
     }
 }
 

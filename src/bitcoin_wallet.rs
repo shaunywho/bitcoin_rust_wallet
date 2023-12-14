@@ -7,12 +7,11 @@
 // licenses.
 // Send testnet coin back to https://bitcoinfaucet.uo1.net/send.php
 
-use bdk::bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey};
-use bdk::bitcoin::network;
-use bdk::template::{Bip44, Bip84};
-use bdk::{self, Balance, KeychainKind};
+use bdk::bitcoin::bip32::ExtendedPrivKey;
+
+use bdk::template::Bip84;
+use bdk::{self, KeychainKind};
 use bdk::{
-    bitcoin::secp256k1::Secp256k1,
     bitcoin::Address,
     bitcoin::Network,
     blockchain::Blockchain,
@@ -70,7 +69,7 @@ pub fn get_balance(wallet: &Wallet<MemoryDatabase>) -> u64 {
 }
 
 pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
-    let mut wallet = Wallet::new(
+    let wallet = Wallet::new(
         Bip84(xprv.clone(), KeychainKind::External),
         Some(Bip84(xprv, KeychainKind::Internal)),
         Network::Testnet,
@@ -99,9 +98,9 @@ pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, am
             amount,
         )
         .enable_rbf();
-    let (mut psbt, tx_details) = tx_builder.finish().unwrap();
+    let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
 
-    let finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
+    let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
 }
 
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -166,7 +165,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use std::str::FromStr;
 
-    use bdk::bitcoin::{bip32::ExtendedPrivKey, Network};
+    use bdk::bitcoin::bip32::ExtendedPrivKey;
 
     use crate::bitcoin_wallet::{generate_wallet_rc_obj, generate_xpriv};
 
@@ -175,10 +174,10 @@ mod tests {
         // from mnemonic
         let mnemonic_0 =
             "limb capital decade way negative task moral empty virus fragile copper elegant";
-        let mnemonic_1 = &String::from(mnemonic_0)[..];
+        let _mnemonic_1 = &String::from(mnemonic_0)[..];
         let xkey_0 = generate_xpriv(mnemonic_0).unwrap();
         let xkey_1 = generate_xpriv(mnemonic_0.clone()).unwrap();
-        let wallet_0 = generate_wallet_rc_obj(xkey_0).unwrap();
+        let _wallet_0 = generate_wallet_rc_obj(xkey_0).unwrap();
 
         let xpriv = xkey_1;
         let xpriv_str = xpriv.to_string();

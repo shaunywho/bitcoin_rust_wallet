@@ -1,10 +1,4 @@
-use crate::bitcoin_wallet::{
-    bitcoin_test, generate_mnemonic_string, generate_wallet, generate_xpriv, get_balance,
-    get_transactions,
-};
-use bdk::blockchain::ElectrumBlockchain;
-
-use bdk::electrum_client::Client;
+use crate::bitcoin_wallet::{generate_mnemonic_string, generate_xpriv};
 
 use bdk::{Balance, TransactionDetails};
 
@@ -13,14 +7,14 @@ use egui::Ui;
 
 use std::sync::mpsc;
 
-use std::time::Instant;
 const FILENAME: &str = "./wallet.txt";
 
 use qrcode_generator::QrCodeEcc;
 
 #[derive(PartialEq)]
 enum AppState {
-    WalletNotAvailable,
+    WalletFileNotAvailable,
+    WalletNotInitialised,
     WalletAvailable,
     DialogBox,
     TransactionSending,
@@ -35,11 +29,26 @@ enum SidePanelState {
     Receiving,
     Contacts,
 }
-
+#[derive(Clone)]
 enum DialogBoxEnum {
-    NewMnemonic,
-    ChangeWalletName,
-    ConfirmSend,
+    NewMnemonic {
+        title: &'static str,
+        message: Option<String>,
+        line_edit: bool,
+        optional: bool,
+    },
+    ChangeWalletName {
+        title: &'static str,
+        message: Option<String>,
+        line_edit: bool,
+        optional: bool,
+    },
+    ConfirmSend {
+        title: &'static str,
+        message: Option<String>,
+        line_edit: bool,
+        optional: bool,
+    },
 }
 
 struct WalletApp {
@@ -55,37 +64,115 @@ pub struct MyApp {
     threads: Vec<String>,
     sync_data_tx: mpsc::SyncSender<(String, SyncData)>,
     sync_data_rx: mpsc::Receiver<(String, SyncData)>,
-    string_scratchpad_0: String,
+    string_scratchpad: String,
 
     dialog_box: Option<DialogBoxEnum>,
     balance: Option<Balance>,
     transactions: Option<Vec<TransactionDetails>>,
 }
 
+trait DialogBox {
+    fn render_dialog_box(&mut self, app: &mut MyApp, ctx: &egui::Context) {}
+
+    fn accept_process(&mut self, app: &mut MyApp) {}
+}
+
+impl DialogBox for DialogBoxEnum {
+    fn accept_process(&mut self, app: &mut MyApp) {
+        match self {
+            DialogBoxEnum::NewMnemonic { message, .. } => {
+                let xkey = generate_xpriv(&message.clone().unwrap()).unwrap();
+                let _ = app.wallet_data.add_wallet(xkey);
+                app.dialog_box = None;
+            }
+            DialogBoxEnum::ChangeWalletName { .. } => {
+                app.wallet_data
+                    .wallets
+                    .get_mut(&app.selected_wallet.as_mut().unwrap().0)
+                    .unwrap()
+                    .wallet_name = app.string_scratchpad.clone();
+                let _ = app.wallet_data.rename_wallet(
+                    &app.selected_wallet.clone().unwrap().0,
+                    &app.string_scratchpad,
+                );
+                app.dialog_box = None;
+            }
+            DialogBoxEnum::ConfirmSend { .. } => {
+                // Implement the logic for accepting ConfirmSend
+                println!("HI");
+            }
+        }
+    }
+
+    fn render_dialog_box(&mut self, app: &mut MyApp, ctx: &egui::Context) {
+        if let Some(dialog_box) = app.dialog_box.clone() {
+            match dialog_box {
+                DialogBoxEnum::NewMnemonic {
+                    title,
+                    message,
+                    mut line_edit,
+                    optional,
+                }
+                | DialogBoxEnum::ChangeWalletName {
+                    title,
+                    message,
+                    mut line_edit,
+                    optional,
+                }
+                | DialogBoxEnum::ConfirmSend {
+                    title,
+                    message,
+                    mut line_edit,
+                    optional,
+                } => {
+                    egui::Window::new(title)
+                        .collapsible(false)
+                        .resizable(false)
+                        .show(ctx, |ui| {
+                            if let Some(message) = message {
+                                ui.vertical_centered(|ui| {
+                                    ui.label(message);
+                                });
+                            }
+                            if line_edit {
+                                ui.vertical_centered(|ui| {
+                                    ui.text_edit_singleline(&mut app.string_scratchpad);
+                                });
+                            }
+                            ui.vertical_centered(|ui| {
+                                if optional {
+                                    if ui.button("Cancel").clicked() {
+                                        app.dialog_box = None;
+                                    }
+                                }
+
+                                if ui.button("Accept").clicked() {
+                                    self.accept_process(app);
+                                }
+                            });
+                        });
+                }
+            }
+        }
+    }
+}
+
 impl MyApp {
     pub fn new() -> Self {
-        let mut state = AppState::WalletNotAvailable;
-        let mut side_panel_state = SidePanelState::Wallet;
+        let mut state = AppState::WalletFileNotAvailable;
+        let side_panel_state = SidePanelState::Wallet;
         let mut wallet_data = WalletData::new(FILENAME);
         let mut selected_wallet = Option::None;
 
-        if wallet_data.initialise_from_wallet_file().unwrap() {
-            state = AppState::WalletAvailable;
-            let selected_wallet_xpriv_str = wallet_data.get_first_wallet_xpriv_str();
-            selected_wallet = Option::Some((
-                selected_wallet_xpriv_str.clone(),
-                wallet_data.get_wallet_element_from_xpriv_str(selected_wallet_xpriv_str),
-            ))
-        };
         let threads = Vec::with_capacity(3);
         let (sync_data_tx, sync_data_rx) = mpsc::sync_channel(0);
 
-        let string_scratchpad_0 = String::new();
+        let string_scratchpad = String::new();
 
         let dialog_box = None;
         let balance = None;
         let transactions = None;
-        let mut slf = Self {
+        let slf = Self {
             state,
             side_panel_state,
             wallet_data,
@@ -93,7 +180,7 @@ impl MyApp {
             threads,
             sync_data_tx,
             sync_data_rx,
-            string_scratchpad_0,
+            string_scratchpad,
             dialog_box,
             balance,
             transactions,
@@ -105,11 +192,11 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Some((private_key, wallet_element)) = &mut self.selected_wallet {
+        self.update_wallet_state();
+        if let Some((_private_key, _wallet_element)) = &mut self.selected_wallet {
             self.wallet_poll();
             self.update_from_wallet_sync();
         }
-        self.check_for_wallet();
         self.render_window(ctx, _frame);
     }
 }
@@ -154,16 +241,24 @@ impl MyApp {
         self.wallet_data
             .get_wallet_element_from_xpriv_str(self.selected_wallet.clone().unwrap().0)
     }
-    fn check_for_wallet(&mut self) {
+    fn update_wallet_state(&mut self) {
         match self.state {
-            AppState::WalletNotAvailable => {
+            AppState::WalletNotInitialised => {
+                self.wallet_data.initialise_from_wallet_file();
                 if !self.wallet_data.wallets.is_empty() {
                     self.state = AppState::WalletAvailable;
                     let selected_wallet_xpriv_str = self.wallet_data.get_first_wallet_xpriv_str();
-                    self.selected_wallet = Option::Some((
-                        selected_wallet_xpriv_str.clone(),
-                        self.get_selected_wallet(),
-                    ));
+                    let selected_wallet_element = self
+                        .wallet_data
+                        .get_wallet_element(&selected_wallet_xpriv_str);
+                    self.selected_wallet =
+                        Option::Some((selected_wallet_xpriv_str.clone(), selected_wallet_element));
+                }
+                self.state = AppState::WalletAvailable;
+            }
+            AppState::WalletFileNotAvailable => {
+                if self.wallet_data.does_file_exist() {
+                    self.state = AppState::WalletNotInitialised;
                 }
             }
             _ => (),
@@ -175,11 +270,8 @@ impl MyApp {
         self.render_toppanel(ctx, _frame);
         self.render_centrepanel(ctx, _frame);
 
-        match self.dialog_box {
-            Some(DialogBoxEnum::NewMnemonic) => self.new_mnemonic_dialog_box_open_window(ctx),
-            Some(DialogBoxEnum::ChangeWalletName) => self.rename_wallet_dialog_box_open_window(ctx),
-            Some(DialogBoxEnum::ConfirmSend) => self.rename_wallet_dialog_box_open_window(ctx),
-            None => (),
+        if let Some(dialog_box) = &mut self.dialog_box.clone() {
+            dialog_box.render_dialog_box(self, ctx);
         }
     }
     pub fn render_sidepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -248,12 +340,18 @@ impl MyApp {
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet();
 
-        ui.horizontal(|ui| {
+        ui.vertical_centered(|ui| {
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
-                self.dialog_box = Some(DialogBoxEnum::ChangeWalletName);
-                self.string_scratchpad_0 = wallet.wallet_name.to_string();
+                self.string_scratchpad = wallet.wallet_name.to_string();
+                self.dialog_box = Some(DialogBoxEnum::ChangeWalletName {
+                    title: "Change Wallet Name",
+                    message: Some("Enter new wallet name".into()),
+                    line_edit: true,
+                    optional: true,
+                });
+                self.string_scratchpad = wallet.wallet_name.to_string();
             }
         });
         ui.heading(format!("Wallet Balance: {:?}", self.get_total()));
@@ -269,20 +367,25 @@ impl MyApp {
         let wallet = self.get_selected_wallet();
         ui.heading(format!("Wallet Balance: {:?}", self.get_total()));
         ui.add_space(50.0);
-        ui.horizontal(|ui| {
+        ui.vertical_centered(|ui| {
             ui.heading("Recipient Address");
             let mut amount = String::new();
             ui.text_edit_singleline(&mut amount);
         });
         ui.add_space(50.0);
-        ui.horizontal(|ui| {
+        ui.vertical_centered(|ui| {
             ui.heading("Amount to send");
             let mut amount = "0".to_string();
             ui.text_edit_singleline(&mut amount);
             ui.label("Sats");
         });
         if ui.button("Send").clicked() {
-            self.dialog_box = Some(DialogBoxEnum::NewMnemonic);
+            self.dialog_box = Some(DialogBoxEnum::ConfirmSend {
+                title: "Confirm Transaction",
+                message: Some("Are you sure you want to send?".into()),
+                line_edit: false,
+                optional: true,
+            });
         }
     }
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
@@ -308,18 +411,26 @@ impl MyApp {
                 ui.set_enabled(false)
             }
 
-            if self.state == AppState::WalletNotAvailable {
-                if ui.button("Create Wallet").clicked() {
-                    self.string_scratchpad_0 = generate_mnemonic_string().unwrap();
-                    self.dialog_box = Some(DialogBoxEnum::NewMnemonic);
+            match self.state {
+                AppState::WalletFileNotAvailable => {
+                    if ui.button("Create Wallet").clicked() {
+                        self.string_scratchpad = generate_mnemonic_string().unwrap();
+                        let new_mnemonic = generate_mnemonic_string().unwrap();
+                        self.dialog_box = Some(DialogBoxEnum::NewMnemonic {
+                            title: "New Wallet Mnemonic",
+                            message: Some(new_mnemonic),
+                            line_edit: false,
+                            optional: false,
+                        });
+                    }
                 }
-            } else {
-                match self.side_panel_state {
+                AppState::WalletNotInitialised => {}
+                _ => match self.side_panel_state {
                     SidePanelState::Wallet => self.render_wallet_panel(ui),
                     SidePanelState::Sending => self.render_sending_panel(ui),
                     SidePanelState::Receiving => self.render_receiving_panel(ui),
                     SidePanelState::Contacts => self.render_contacts_panel(ui),
-                }
+                },
             }
         });
     }
@@ -328,63 +439,12 @@ impl MyApp {
         egui::TopBottomPanel::top("Headerbar")
             .exact_height(50.0)
             .show(ctx, |ui| {
-                match self.dialog_box {
-                    None => (),
-                    _ => ui.set_enabled(false),
+                if self.dialog_box.is_some() {
+                    ui.set_enabled(false);
                 }
                 ui.heading("Rust Bitcoin Wallet");
             });
     }
-}
-
-impl MyApp {
-    pub fn new_mnemonic_dialog_box_open_window(&mut self, ctx: &egui::Context) {
-        egui::Window::new("New Generated Mnemonic")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(self.string_scratchpad_0.clone());
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Accept").clicked() {
-                        let xkey = generate_xpriv(&self.string_scratchpad_0).unwrap();
-                        let _ = self.wallet_data.add_wallet(xkey);
-                        self.dialog_box = None;
-                    }
-                });
-            });
-    }
-    pub fn rename_wallet_dialog_box_open_window(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Change Wallet Name?")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.string_scratchpad_0);
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        self.dialog_box = None;
-                    }
-
-                    if ui.button("Accept").clicked() {
-                        self.wallet_data
-                            .wallets
-                            .get_mut(&self.selected_wallet.as_mut().unwrap().0)
-                            .unwrap()
-                            .wallet_name = self.string_scratchpad_0.clone();
-                        let _ = self.wallet_data.rename_wallet(
-                            &self.selected_wallet.clone().unwrap().0,
-                            &self.string_scratchpad_0,
-                        );
-                        self.dialog_box = None;
-                    }
-                });
-            });
-    }
-
-    pub fn confirm_send_dialog_box_open_window(&self) {}
 }
 
 pub fn generate_qrcode_from_address(address: &str) -> Result<egui::ColorImage, image::ImageError> {
