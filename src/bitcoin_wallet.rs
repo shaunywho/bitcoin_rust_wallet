@@ -78,6 +78,19 @@ pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, 
     return Ok(wallet);
 }
 
+pub fn is_valid_bitcoin_address(address: &str) -> bool {
+    if let Ok(addr) = Address::from_str(address) {
+        // You can also specify the Bitcoin network (mainnet, testnet, etc.)
+        // For example, let network = Network::Bitcoin; or Network::Testnet
+        let network = Network::Testnet;
+
+        // Check if the address is valid for the specified network
+        addr.is_valid_for_network(network)
+    } else {
+        false // Parsing failed, so the address is not valid
+    }
+}
+
 pub fn generate_wallet_rc_obj(
     xprv: ExtendedPrivKey,
 ) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {

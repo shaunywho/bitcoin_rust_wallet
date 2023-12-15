@@ -1,4 +1,4 @@
-use crate::bitcoin_wallet::{generate_mnemonic_string, generate_xpriv};
+use crate::bitcoin_wallet::{generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address};
 
 use bdk::{Balance, TransactionDetails};
 
@@ -10,12 +10,18 @@ use std::sync::mpsc;
 const FILENAME: &str = "./wallet.txt";
 
 use qrcode_generator::QrCodeEcc;
-
+use std::num::ParseIntError;
 #[derive(PartialEq)]
 enum WalletFileState {
     WalletFileNotAvailable,
     WalletNotInitialised,
     WalletAvailable,
+}
+
+enum InvalidTransactionTypes {
+    InvalidBitcoinAddress,
+    InvalidAmountNotNumeric,
+    InvalidAmountNotEnough,
 }
 
 #[derive(PartialEq)]
@@ -38,6 +44,7 @@ pub enum DialogBoxEnum {
     NewMnemonic,
     ChangeWalletName,
     ConfirmSend,
+    InvalidTransaction,
 }
 
 struct WalletApp {
@@ -87,6 +94,9 @@ impl MyApp {
                 DialogBoxEnum::ConfirmSend { .. } => {
                     // Implement the logic for accepting ConfirmSend
                     println!("HI");
+                }
+                DialogBoxEnum::InvalidTransaction { .. } => {
+                    println!("Hi");
                 }
             }
         }
@@ -194,6 +204,30 @@ impl MyApp {
             None => 0,
             Some(balance) => balance.clone().get_total(),
         }
+    }
+
+    fn is_valid_transaction_request(&self) -> (bool, Vec<InvalidTransactionTypes>) {
+        let mut valid = true;
+        let mut invalid_transaction_vec = Vec::new();
+        if !is_valid_bitcoin_address(&self.recipient_address_string) {
+            valid = false;
+            invalid_transaction_vec.push(InvalidTransactionTypes::InvalidBitcoinAddress);
+        }
+        let result: Result<u64, ParseIntError> = self.amount_to_send_string.parse();
+        match result {
+            Ok(amount) => {
+                if amount > self.balance.clone().unwrap().get_total() {
+                    valid = false;
+                    invalid_transaction_vec.push(InvalidTransactionTypes::InvalidAmountNotEnough)
+                }
+            }
+            Err(_) => {
+                valid = false;
+                invalid_transaction_vec.push(InvalidTransactionTypes::InvalidAmountNotNumeric);
+            }
+        }
+
+        return (valid, invalid_transaction_vec);
     }
 
     fn wallet_poll(&mut self) {
@@ -350,21 +384,34 @@ impl MyApp {
             ui.label("Sats");
         });
         if ui.button("Send").clicked() {
-            self.dialog_box = Some(DialogBox {
-                dialog_box_enum: DialogBoxEnum::ConfirmSend,
-                title: "Confirm Transaction",
-                message: Some(
-                    format!(
-                        "Are you sure you want to send {} Sats to {}?",
-                        &self.amount_to_send_string, &self.recipient_address_string
-                    )
-                    .into(),
-                ),
-                line_edit: None,
-                optional: true,
-            });
+            let (valid, invalid_vec) = self.is_valid_transaction_request();
+
+            if valid {
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::ConfirmSend,
+                    title: "Confirm Transaction",
+                    message: Some(
+                        format!(
+                            "Are you sure you want to send {} Sats to {}?",
+                            &self.amount_to_send_string, &self.recipient_address_string
+                        )
+                        .into(),
+                    ),
+                    line_edit: None,
+                    optional: true,
+                });
+            } else {
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::InvalidTransaction,
+                    title: "Invalid Transaction",
+                    message: Some("Invalid Transaction".into()),
+                    line_edit: None,
+                    optional: false,
+                })
+            }
         }
     }
+
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet_element();
         let address = wallet.address;
