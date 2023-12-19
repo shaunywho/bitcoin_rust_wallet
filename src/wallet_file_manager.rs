@@ -41,7 +41,6 @@ pub struct WalletElement {
     pub address: String,
     pub balance: bdk::Balance,
     pub transactions: Vec<TransactionDetails>,
-    // pub wallet_obj: Wallet<MemoryDatabase>,
 }
 
 impl WalletElement {

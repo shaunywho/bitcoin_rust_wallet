@@ -1,4 +1,6 @@
-use crate::bitcoin_wallet::{generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address};
+use crate::bitcoin_wallet::{
+    generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address, make_transaction,
+};
 
 use bdk::{Balance, TransactionDetails};
 
@@ -22,6 +24,7 @@ enum InvalidTransactionTypes {
     InvalidBitcoinAddress,
     InvalidAmountNotNumeric,
     InvalidAmountNotEnough,
+    InvalidOwnAddress,
 }
 
 #[derive(PartialEq)]
@@ -75,7 +78,6 @@ impl MyApp {
                 DialogBoxEnum::NewMnemonic => {
                     let xkey = generate_xpriv(&dialog_box.message.clone().unwrap()).unwrap();
                     let _ = self.wallet_data.add_wallet(xkey);
-                    self.dialog_box = None;
                 }
                 DialogBoxEnum::ChangeWalletName => {
                     self.rename_wallet_string = line_edit.unwrap();
@@ -89,16 +91,17 @@ impl MyApp {
                         &self.selected_wallet.clone().unwrap().0,
                         &self.rename_wallet_string,
                     );
-                    self.dialog_box = None;
                 }
                 DialogBoxEnum::ConfirmSend { .. } => {
-                    // Implement the logic for accepting ConfirmSend
+                    let wallet = self.get_selected_wallet_element();
+                    let recipient_addr = &self.recipient_address_string;
+                    let amount = &self.amount_to_send_string;
+                    // make_transaction(wallet, &recipient_addr, amount);
                     println!("HI");
                 }
-                DialogBoxEnum::InvalidTransaction { .. } => {
-                    println!("Hi");
-                }
+                DialogBoxEnum::InvalidTransaction { .. } => {}
             }
+            self.dialog_box = None;
         }
     }
 
@@ -206,28 +209,39 @@ impl MyApp {
         }
     }
 
-    fn is_valid_transaction_request(&self) -> (bool, Vec<InvalidTransactionTypes>) {
+    fn is_valid_transaction_request(&self) -> (bool, Vec<String>) {
         let mut valid = true;
         let mut invalid_transaction_vec = Vec::new();
         if !is_valid_bitcoin_address(&self.recipient_address_string) {
             valid = false;
-            invalid_transaction_vec.push(InvalidTransactionTypes::InvalidBitcoinAddress);
+            invalid_transaction_vec.push("Invalid Bitcoin Address".to_string());
         }
+
+        if self.is_own_address() {
+            valid = false;
+            invalid_transaction_vec.push("Can't send to own address".to_string());
+        }
+
         let result: Result<u64, ParseIntError> = self.amount_to_send_string.parse();
         match result {
             Ok(amount) => {
                 if amount > self.balance.clone().unwrap().get_total() {
                     valid = false;
-                    invalid_transaction_vec.push(InvalidTransactionTypes::InvalidAmountNotEnough)
+                    invalid_transaction_vec
+                        .push("Insufficient funds in wallet for requested transaction".to_string())
                 }
             }
             Err(_) => {
                 valid = false;
-                invalid_transaction_vec.push(InvalidTransactionTypes::InvalidAmountNotNumeric);
+                invalid_transaction_vec.push("Amount needs to be a number".to_string());
             }
         }
 
         return (valid, invalid_transaction_vec);
+    }
+
+    fn is_own_address(&self) -> bool {
+        return self.recipient_address_string == self.selected_wallet.clone().unwrap().0;
     }
 
     fn wallet_poll(&mut self) {
@@ -401,10 +415,11 @@ impl MyApp {
                     optional: true,
                 });
             } else {
+                let invalid_message = invalid_vec.join("\n");
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::InvalidTransaction,
                     title: "Invalid Transaction",
-                    message: Some("Invalid Transaction".into()),
+                    message: Some(invalid_message),
                     line_edit: None,
                     optional: false,
                 })
