@@ -39,8 +39,8 @@ pub struct WalletElement {
     priv_key: String,
     pub wallet_name: String,
     pub address: String,
-    pub balance: bdk::Balance,
-    pub transactions: Vec<TransactionDetails>,
+    pub balance: Option<bdk::Balance>,
+    pub transactions: Option<Vec<TransactionDetails>>,
 }
 
 impl WalletElement {
@@ -64,9 +64,9 @@ impl WalletElement {
         return Self {
             priv_key: priv_key.to_string(),
             wallet_name: wallet_name,
-            balance: balance,
+            balance: Some(balance),
             address: address,
-            transactions: transactions,
+            transactions: Some(transactions),
         };
     }
 

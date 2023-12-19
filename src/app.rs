@@ -59,7 +59,7 @@ pub struct MyApp {
     state: WalletFileState,
     side_panel_state: SidePanelState,
     wallet_data: WalletData,
-    selected_wallet: Option<(String, WalletElement)>,
+    selected_wallet: Option<String>,
     threads: Vec<String>,
     sync_data_tx: mpsc::SyncSender<(String, SyncData)>,
     sync_data_rx: mpsc::Receiver<(String, SyncData)>,
@@ -67,8 +67,6 @@ pub struct MyApp {
     recipient_address_string: String,
     amount_to_send_string: String,
     dialog_box: Option<DialogBox>,
-    balance: Option<Balance>,
-    transactions: Option<Vec<TransactionDetails>>,
 }
 
 impl MyApp {
@@ -84,11 +82,11 @@ impl MyApp {
 
                     self.wallet_data
                         .wallets
-                        .get_mut(&self.selected_wallet.as_mut().unwrap().0)
+                        .get_mut(&self.selected_wallet.unwrap())
                         .unwrap()
                         .wallet_name = self.rename_wallet_string.clone();
                     self.wallet_data.rename_wallet(
-                        &self.selected_wallet.clone().unwrap().0,
+                        &self.selected_wallet.clone().unwrap(),
                         &self.rename_wallet_string,
                     );
                 }
@@ -153,8 +151,6 @@ impl MyApp {
         let recipient_address_string = String::new();
         let amount_to_send_string = String::new();
         let dialog_box = None;
-        let balance = None;
-        let transactions = None;
         let slf = Self {
             state,
             side_panel_state,
@@ -167,8 +163,6 @@ impl MyApp {
             recipient_address_string,
             amount_to_send_string,
             dialog_box,
-            balance,
-            transactions,
         };
 
         slf
@@ -178,7 +172,7 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_wallet_state();
-        if let Some((_private_key, _wallet_element)) = &mut self.selected_wallet {
+        if let Some(_private_key) = &mut self.selected_wallet {
             self.wallet_poll();
             self.update_from_wallet_sync();
         }
@@ -190,7 +184,7 @@ impl MyApp {
     fn update_from_wallet_sync(&mut self) {
         match self.sync_data_rx.try_recv() {
             Ok((thread_priv_key, thread_sync_data)) => {
-                if thread_priv_key == self.selected_wallet.clone().unwrap().0 {
+                if thread_priv_key == self.selected_wallet.clone().unwrap() {
                     self.balance = Some(thread_sync_data.balance);
                     self.transactions = Some(thread_sync_data.transactions);
                 }
@@ -241,25 +235,24 @@ impl MyApp {
     }
 
     fn is_own_address(&self) -> bool {
-        return self.recipient_address_string == self.selected_wallet.clone().unwrap().0;
+        return self.recipient_address_string == self.selected_wallet.clone().unwrap();
     }
 
     fn wallet_poll(&mut self) {
-        let wallet_element_kv = self.selected_wallet.clone().unwrap();
-        let priv_key = wallet_element_kv.0;
-        let mut wallet_element = wallet_element_kv.1;
-        if self.threads.contains(&priv_key) {
+        let selected_wallet_priv_key = self.selected_wallet.clone().unwrap();
+        let mut wallet_element = self.get_selected_wallet_element();
+        if self.threads.contains(&selected_wallet_priv_key) {
             return;
         }
         wallet_element.start_wallet_syncing_worker(self.sync_data_tx.clone());
-        self.threads.push(priv_key)
+        self.threads.push(selected_wallet_priv_key)
     }
 }
 
 impl MyApp {
     fn get_selected_wallet_element(&mut self) -> WalletElement {
         self.wallet_data
-            .get_wallet_element(&self.selected_wallet.as_ref().unwrap().0)
+            .get_wallet_element(&self.selected_wallet.as_ref().unwrap())
     }
     fn update_wallet_state(&mut self) {
         match self.state {
@@ -271,8 +264,7 @@ impl MyApp {
                     let selected_wallet_element = self
                         .wallet_data
                         .get_wallet_element(&selected_wallet_xpriv_str);
-                    self.selected_wallet =
-                        Option::Some((selected_wallet_xpriv_str.clone(), selected_wallet_element));
+                    self.selected_wallet = Option::Some(selected_wallet_xpriv_str.clone());
                 }
                 self.state = WalletFileState::WalletAvailable;
             }
