@@ -1,5 +1,6 @@
 use crate::bitcoin_wallet::{
-    generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address, make_transaction,
+    bitcoin_test, generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address,
+    make_transaction,
 };
 
 use crate::wallet_file_manager::{SyncData, WalletData, WalletElement};
@@ -89,11 +90,10 @@ impl MyApp {
                     );
                 }
                 DialogBoxEnum::ConfirmSend { .. } => {
+                    let recipient_addr = self.recipient_address_string.clone();
+                    let amount = (&self.amount_to_send_string).parse().unwrap();
                     let wallet = self.get_selected_wallet_element();
-                    let recipient_addr = &self.recipient_address_string;
-                    let amount = &self.amount_to_send_string;
-                    // make_transaction(wallet, &recipient_addr, amount);
-                    println!("HI");
+                    wallet.send_transaction(&recipient_addr, amount);
                 }
                 DialogBoxEnum::InvalidTransaction { .. } => {}
             }
@@ -175,6 +175,7 @@ impl eframe::App for MyApp {
             self.update_from_wallet_sync();
         }
         self.render_window(ctx, _frame);
+        // bitcoin_test();
     }
 }
 
@@ -225,8 +226,9 @@ impl MyApp {
         return (valid, invalid_transaction_vec);
     }
 
-    fn is_own_address(&self) -> bool {
-        return self.recipient_address_string == self.selected_wallet.clone().unwrap();
+    fn is_own_address(&mut self) -> bool {
+        let address = self.get_selected_wallet_element().address.clone();
+        return self.recipient_address_string == address;
     }
 
     fn wallet_poll(&mut self) {

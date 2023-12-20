@@ -99,6 +99,8 @@ pub fn generate_wallet_rc_obj(
 }
 
 pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, amount: u64) {
+    let balance = wallet.get_balance().unwrap();
+    println!("Available balance: {}", balance);
     let recipient_address = Address::from_str(recipient_str)
         .unwrap()
         .require_network(Network::Testnet)
@@ -111,6 +113,7 @@ pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, am
             amount,
         )
         .enable_rbf();
+    println!("{:?}", tx_builder);
     let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
 
     let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
@@ -151,7 +154,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
             7000,
         )
         .enable_rbf();
-    let (mut psbt, tx_details) = tx_builder.finish()?;
+    let (mut psbt, tx_details) = tx_builder.finish().unwrap();
 
     let finalized = wallet.sign(&mut psbt, SignOptions::default())?;
     assert!(finalized, "Tx has not been finalized");
@@ -166,7 +169,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let raw_transaction = psbt.extract_tx();
     let txid = raw_transaction.txid();
-    blockchain.broadcast(&raw_transaction)?;
+    // blockchain.broadcast(&raw_transaction)?;
     println!(
         "Transaction sent! TXID: {txid}.\nExplorer URL: https://blockstream.info/testnet/tx/{txid}",
         txid = txid

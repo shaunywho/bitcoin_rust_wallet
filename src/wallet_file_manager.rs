@@ -22,6 +22,7 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::bitcoin_wallet::generate_wallet;
+use crate::bitcoin_wallet::make_transaction;
 
 const FILENAME: &str = "./wallet.txt";
 
@@ -93,6 +94,11 @@ impl WalletElement {
             None => 0,
             Some(balance) => balance.clone().get_total(),
         }
+    }
+
+    pub fn send_transaction(&self, recipient_address: &str, amount: u64) {
+        let wallet = generate_wallet(ExtendedPrivKey::from_str(&self.priv_key).unwrap()).unwrap();
+        make_transaction(&wallet, recipient_address, amount);
     }
 }
 
