@@ -2,8 +2,6 @@ use crate::bitcoin_wallet::{
     generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address, make_transaction,
 };
 
-use bdk::{Balance, TransactionDetails};
-
 use crate::wallet_file_manager::{SyncData, WalletData, WalletElement};
 use egui::Ui;
 
@@ -82,7 +80,7 @@ impl MyApp {
 
                     self.wallet_data
                         .wallets
-                        .get_mut(&self.selected_wallet.unwrap())
+                        .get_mut(&self.selected_wallet.clone().unwrap())
                         .unwrap()
                         .wallet_name = self.rename_wallet_string.clone();
                     self.wallet_data.rename_wallet(
@@ -185,25 +183,17 @@ impl MyApp {
         match self.sync_data_rx.try_recv() {
             Ok((thread_priv_key, thread_sync_data)) => {
                 if thread_priv_key == self.selected_wallet.clone().unwrap() {
-                    self.balance = Some(thread_sync_data.balance);
-                    self.transactions = Some(thread_sync_data.transactions);
+                    let wallet_element = self.get_selected_wallet_element();
+                    wallet_element.balance = Some(thread_sync_data.balance);
+                    wallet_element.transactions = Some(thread_sync_data.transactions);
                 }
                 self.threads.retain(|priv_key| priv_key != &thread_priv_key);
-                println!("{:?}", self.balance);
-                println!("{:?}", self.transactions);
             }
             Err(_) => {}
         }
     }
 
-    fn get_total(&self) -> u64 {
-        match &self.balance {
-            None => 0,
-            Some(balance) => balance.clone().get_total(),
-        }
-    }
-
-    fn is_valid_transaction_request(&self) -> (bool, Vec<String>) {
+    fn is_valid_transaction_request(&mut self) -> (bool, Vec<String>) {
         let mut valid = true;
         let mut invalid_transaction_vec = Vec::new();
         if !is_valid_bitcoin_address(&self.recipient_address_string) {
@@ -219,7 +209,8 @@ impl MyApp {
         let result: Result<u64, ParseIntError> = self.amount_to_send_string.parse();
         match result {
             Ok(amount) => {
-                if amount > self.balance.clone().unwrap().get_total() {
+                let total = self.get_selected_wallet_element().get_total();
+                if amount > total {
                     valid = false;
                     invalid_transaction_vec
                         .push("Insufficient funds in wallet for requested transaction".to_string())
@@ -240,17 +231,18 @@ impl MyApp {
 
     fn wallet_poll(&mut self) {
         let selected_wallet_priv_key = self.selected_wallet.clone().unwrap();
-        let mut wallet_element = self.get_selected_wallet_element();
+        let sync_data_tx = self.sync_data_tx.clone();
         if self.threads.contains(&selected_wallet_priv_key) {
             return;
         }
-        wallet_element.start_wallet_syncing_worker(self.sync_data_tx.clone());
+        let wallet_element = self.get_selected_wallet_element();
+        wallet_element.start_wallet_syncing_worker(sync_data_tx);
         self.threads.push(selected_wallet_priv_key)
     }
 }
 
 impl MyApp {
-    fn get_selected_wallet_element(&mut self) -> WalletElement {
+    fn get_selected_wallet_element(&mut self) -> &mut WalletElement {
         self.wallet_data
             .get_wallet_element(&self.selected_wallet.as_ref().unwrap())
     }
@@ -350,7 +342,7 @@ impl MyApp {
         });
     }
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet_element();
+        let wallet = self.get_selected_wallet_element().clone();
 
         ui.vertical_centered(|ui| {
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
@@ -366,17 +358,20 @@ impl MyApp {
                 });
             }
         });
-        ui.heading(format!("Wallet Balance: {:?}", self.get_total()));
+        ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
-        let public_key = wallet.address;
+        let public_key = &wallet.address;
 
         ui.label(format!("Public Key: {:?}", &public_key));
         if ui.button("Copy").clicked() {
-            ui.output_mut(|o| o.copied_text = public_key);
+            ui.output_mut(|o| o.copied_text = public_key.to_string());
         };
     }
     pub fn render_sending_panel(&mut self, ui: &mut Ui) {
-        ui.heading(format!("Wallet Balance: {:?}", self.get_total()));
+        ui.heading(format!(
+            "Wallet Balance: {:?}",
+            self.get_selected_wallet_element().get_total()
+        ));
         ui.add_space(50.0);
         ui.vertical_centered(|ui| {
             ui.heading("Recipient Address");
@@ -421,7 +416,7 @@ impl MyApp {
 
     pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
         let wallet = self.get_selected_wallet_element();
-        let address = wallet.address;
+        let address = &wallet.address;
         ui.label(format!("Public Key: {:?}", address));
         // Encode some data into bits.
 

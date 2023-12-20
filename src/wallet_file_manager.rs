@@ -88,6 +88,12 @@ impl WalletElement {
             ));
         });
     }
+    pub fn get_total(&self) -> u64 {
+        match &self.balance {
+            None => 0,
+            Some(balance) => balance.clone().get_total(),
+        }
+    }
 }
 
 impl WalletData {
@@ -203,8 +209,11 @@ impl WalletData {
         return first_wallet;
     }
 
-    pub fn get_wallet_element(&self, xpriv_str: &str) -> WalletElement {
-        return self.wallets[xpriv_str].clone();
+    pub fn get_wallet_element(&mut self, xpriv_str: &str) -> &mut WalletElement {
+        // Using entry() to ensure the key exists and get a mutable reference
+        self.wallets
+            .entry(xpriv_str.to_string())
+            .or_insert_with(|| WalletElement::new("", "")) // Create a new WalletElement if key doesn't exist
     }
 }
 
