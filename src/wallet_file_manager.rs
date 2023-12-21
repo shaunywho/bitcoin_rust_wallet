@@ -19,7 +19,11 @@ use std::io::Write;
 
 use std::str::FromStr;
 use std::sync::mpsc;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
+use std::thread::JoinHandle;
 
 use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::make_transaction;
@@ -35,59 +39,56 @@ pub struct WalletData {
     pub wallets: HashMap<String, WalletElement>,
     filename: String,
 }
-#[derive(Clone)]
+
 pub struct WalletElement {
     priv_key: String,
     pub wallet_name: String,
     pub address: String,
-    pub balance: Option<bdk::Balance>,
+    pub wallet_obj: Arc<Mutex<Wallet<MemoryDatabase>>>,
+    pub balance: Option<Balance>,
     pub transactions: Option<Vec<TransactionDetails>>,
 }
 
 impl WalletElement {
-    fn sync(wallet: &Wallet<MemoryDatabase>) {
-        let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
-        let blockchain = ElectrumBlockchain::from(client);
-        wallet.sync(&blockchain, SyncOptions::default());
-    }
     pub fn new(priv_key: &str, wallet_name: &str) -> Self {
-        let wallet = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
-        WalletElement::sync(&wallet);
+        let wallet_obj = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
+
         let wallet_name = wallet_name.to_string();
 
-        let balance = wallet.get_balance().unwrap();
-        let address = wallet
+        let address = wallet_obj
             .get_address(AddressIndex::Peek(0))
             .unwrap()
             .to_string();
-        let transactions = wallet.list_transactions(true).unwrap();
 
         return Self {
             priv_key: priv_key.to_string(),
             wallet_name: wallet_name,
-            balance: Some(balance),
             address: address,
-            transactions: Some(transactions),
+            wallet_obj: Arc::new(Mutex::new(wallet_obj)),
+            balance: None,
+            transactions: None,
         };
     }
 
-    pub fn start_wallet_syncing_worker(&mut self, sync_data: mpsc::SyncSender<(String, SyncData)>) {
-        let priv_key = self.priv_key.clone(); // Clone the necessary data
-
-        thread::spawn(move || {
-            let xpriv = ExtendedPrivKey::from_str(&priv_key).unwrap();
-            let wallet: Wallet<MemoryDatabase> = generate_wallet(xpriv).unwrap();
-            WalletElement::sync(&wallet);
-            let balance = wallet.get_balance().unwrap().clone();
-            let transactions = wallet.list_transactions(true).unwrap().clone();
-            let _ = sync_data.send((
-                priv_key,
-                SyncData {
-                    balance,
-                    transactions,
-                },
-            ));
+    pub fn start_wallet_syncing_worker(&self, sync_sender: Sender<SyncData>) -> JoinHandle<()> {
+        let wallet_clone = Arc::clone(&self.wallet_obj);
+        let handle = thread::spawn(move || {
+            let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+            let blockchain = ElectrumBlockchain::from(client);
+            let mut wallet_locked = wallet_clone.lock().unwrap();
+            wallet_locked.sync(&blockchain, SyncOptions::default());
+            let balance = wallet_locked.get_balance().unwrap();
+            let transactions = wallet_locked.list_transactions(true).unwrap();
+            let sync_data = SyncData {
+                balance,
+                transactions,
+                // ... other fields you might want to include
+            };
+            sync_sender
+                .send(sync_data)
+                .expect("Failed to send sync data");
         });
+        return handle;
     }
     pub fn get_total(&self) -> u64 {
         match &self.balance {
@@ -97,8 +98,16 @@ impl WalletElement {
     }
 
     pub fn send_transaction(&self, recipient_address: &str, amount: u64) {
-        let wallet = generate_wallet(ExtendedPrivKey::from_str(&self.priv_key).unwrap()).unwrap();
-        make_transaction(&wallet, recipient_address, amount);
+        let wallet_locked = self.wallet_obj.lock().unwrap();
+        make_transaction(&wallet_locked, recipient_address, amount);
+    }
+
+    pub fn set_transactions(&mut self, transactions: Vec<TransactionDetails>) {
+        self.transactions = Some(transactions);
+    }
+
+    pub fn set_balance(&mut self, balance: Balance) {
+        self.balance = Some(balance);
     }
 }
 
@@ -152,11 +161,6 @@ impl WalletData {
         }
         Ok(found_record)
     }
-    // pub fn get_wallet_element_from_xpriv_str(&mut self, xprv_str: String) -> WalletElement {
-    //     let xprv_str = &xprv_str[..];
-    //     let wallet_element = self.wallets[xprv_str].clone();
-    //     return wallet_element;
-    // }
 
     pub fn add_wallet(&mut self, xprv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
         let priv_key = xprv.to_string();

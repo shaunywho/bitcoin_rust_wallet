@@ -4,9 +4,12 @@ use crate::bitcoin_wallet::{
 };
 
 use crate::wallet_file_manager::{SyncData, WalletData, WalletElement};
+use bdk::{Balance, TransactionDetails};
 use egui::Ui;
 
-use std::sync::mpsc;
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
 
@@ -59,9 +62,9 @@ pub struct MyApp {
     side_panel_state: SidePanelState,
     wallet_data: WalletData,
     selected_wallet: Option<String>,
-    threads: Vec<String>,
-    sync_data_tx: mpsc::SyncSender<(String, SyncData)>,
-    sync_data_rx: mpsc::Receiver<(String, SyncData)>,
+    sync_data_receiver: mpsc::Receiver<SyncData>,
+    sync_data_sender: mpsc::Sender<SyncData>,
+    active_threads: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     rename_wallet_string: String,
     recipient_address_string: String,
     amount_to_send_string: String,
@@ -102,7 +105,6 @@ impl MyApp {
     }
 
     fn render_dialog_box(&mut self, ctx: &egui::Context) {
-        // let dialog_box = self.dialog_box.as_mut().unwrap();
         egui::Window::new(self.dialog_box.as_ref().unwrap().title)
             .collapsible(false)
             .resizable(false)
@@ -140,23 +142,22 @@ impl MyApp {
         let side_panel_state = SidePanelState::Wallet;
         let mut wallet_data = WalletData::new(FILENAME);
         let mut selected_wallet = Option::None;
-
-        let threads = Vec::with_capacity(3);
-        let (sync_data_tx, sync_data_rx) = mpsc::sync_channel(0);
-
-        let string_scratchpad = [String::new(), String::new(), String::new()];
+        let (sync_data_sender, sync_data_receiver) = mpsc::channel();
         let rename_wallet_string = String::new();
         let recipient_address_string = String::new();
         let amount_to_send_string = String::new();
         let dialog_box = None;
+        let active_threads = Arc::new(Mutex::new(HashMap::new()));
+
         let slf = Self {
             state,
             side_panel_state,
             wallet_data,
             selected_wallet,
-            threads,
-            sync_data_tx,
-            sync_data_rx,
+            sync_data_sender,
+            sync_data_receiver,
+            active_threads,
+
             rename_wallet_string,
             recipient_address_string,
             amount_to_send_string,
@@ -172,28 +173,15 @@ impl eframe::App for MyApp {
         self.update_wallet_state();
         if let Some(_private_key) = &mut self.selected_wallet {
             self.wallet_poll();
-            self.update_from_wallet_sync();
+            // self.update_from_wallet_sync();
         }
+
         self.render_window(ctx, _frame);
         // bitcoin_test();
     }
 }
 
 impl MyApp {
-    fn update_from_wallet_sync(&mut self) {
-        match self.sync_data_rx.try_recv() {
-            Ok((thread_priv_key, thread_sync_data)) => {
-                if thread_priv_key == self.selected_wallet.clone().unwrap() {
-                    let wallet_element = self.get_selected_wallet_element();
-                    wallet_element.balance = Some(thread_sync_data.balance);
-                    wallet_element.transactions = Some(thread_sync_data.transactions);
-                }
-                self.threads.retain(|priv_key| priv_key != &thread_priv_key);
-            }
-            Err(_) => {}
-        }
-    }
-
     fn is_valid_transaction_request(&mut self) -> (bool, Vec<String>) {
         let mut valid = true;
         let mut invalid_transaction_vec = Vec::new();
@@ -233,13 +221,33 @@ impl MyApp {
 
     fn wallet_poll(&mut self) {
         let selected_wallet_priv_key = self.selected_wallet.clone().unwrap();
-        let sync_data_tx = self.sync_data_tx.clone();
-        if self.threads.contains(&selected_wallet_priv_key) {
+        println!("Length = {}", self.active_threads.lock().unwrap().len());
+        let sync_data_channel_clone = self.sync_data_sender.clone();
+
+        while let Ok(sync_data) = self.sync_data_receiver.try_recv() {
+            let wallet = self.get_selected_wallet_element();
+            wallet.balance = Some(sync_data.balance);
+            wallet.transactions = Some(sync_data.transactions);
+        }
+        self.active_threads
+            .lock()
+            .unwrap()
+            .retain(|_, handle| !handle.is_finished());
+
+        if self
+            .active_threads
+            .lock()
+            .unwrap()
+            .contains_key(&selected_wallet_priv_key)
+        {
             return;
         }
         let wallet_element = self.get_selected_wallet_element();
-        wallet_element.start_wallet_syncing_worker(sync_data_tx);
-        self.threads.push(selected_wallet_priv_key)
+        let handle = wallet_element.start_wallet_syncing_worker(sync_data_channel_clone);
+        self.active_threads
+            .lock()
+            .unwrap()
+            .insert(selected_wallet_priv_key, handle);
     }
 }
 
@@ -344,9 +352,8 @@ impl MyApp {
         });
     }
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
-        let wallet = self.get_selected_wallet_element().clone();
-
         ui.vertical_centered(|ui| {
+            let wallet = self.get_selected_wallet_element();
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
@@ -360,6 +367,7 @@ impl MyApp {
                 });
             }
         });
+        let wallet = self.get_selected_wallet_element();
         ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
         let public_key = &wallet.address;
