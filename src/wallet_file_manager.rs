@@ -39,7 +39,7 @@ pub struct WalletData {
     pub wallets: HashMap<String, WalletElement>,
     filename: String,
     blockchain: Arc<Mutex<ElectrumBlockchain>>,
-    selected_walletx: Option<String>,
+    pub selected_wallet: Option<String>,
 }
 
 pub struct WalletElement {
@@ -130,7 +130,7 @@ impl WalletData {
             wallets: HashMap::new(),
             filename: filename.to_string(),
             blockchain: Arc::new(Mutex::new(blockchain)),
-            selected_walletx: None,
+            selected_wallet: None,
         };
 
         return wallet_data;
@@ -232,8 +232,13 @@ impl WalletData {
             .or_insert_with(|| WalletElement::new("", "")) // Create a new WalletElement if key doesn't exist
     }
 
-    pub fn get_selected_walletx_string(&self) -> String {
-        return self.selected_walletx.clone().unwrap();
+    pub fn get_selected_wallet_string(&self) -> String {
+        return self.selected_wallet.clone().unwrap();
+    }
+
+    pub fn get_selected_wallet_element(&mut self) -> &mut WalletElement {
+        let wallet_string = self.get_selected_wallet_string();
+        return self.get_wallet_element(&wallet_string);
     }
 }
 
