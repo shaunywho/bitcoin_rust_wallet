@@ -84,11 +84,11 @@ impl MyApp {
 
                     self.wallet_data
                         .wallets
-                        .get_mut(&self.selected_wallet.clone().unwrap())
+                        .get_mut(&self.wallet_data.get_selected_walletx_string())
                         .unwrap()
                         .wallet_name = self.rename_wallet_string.clone();
                     self.wallet_data.rename_wallet(
-                        &self.selected_wallet.clone().unwrap(),
+                        &self.wallet_data.get_selected_walletx_string(),
                         &self.rename_wallet_string,
                     );
                 }
@@ -220,7 +220,7 @@ impl MyApp {
     }
 
     fn wallet_poll(&mut self) {
-        let selected_wallet_priv_key = self.selected_wallet.clone().unwrap();
+        let selected_wallet_priv_key = self.wallet_data.get_selected_walletx_string();
         println!("Length = {}", self.active_threads.lock().unwrap().len());
         let sync_data_channel_clone = self.sync_data_sender.clone();
 

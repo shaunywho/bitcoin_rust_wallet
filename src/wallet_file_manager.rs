@@ -38,6 +38,8 @@ pub struct SyncData {
 pub struct WalletData {
     pub wallets: HashMap<String, WalletElement>,
     filename: String,
+    blockchain: Arc<Mutex<ElectrumBlockchain>>,
+    selected_walletx: Option<String>,
 }
 
 pub struct WalletElement {
@@ -122,9 +124,13 @@ impl WalletData {
     }
 
     pub fn new(filename: &str) -> Self {
+        let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
+        let blockchain = ElectrumBlockchain::from(client);
         let wallet_data = Self {
             wallets: HashMap::new(),
             filename: filename.to_string(),
+            blockchain: Arc::new(Mutex::new(blockchain)),
+            selected_walletx: None,
         };
 
         return wallet_data;
@@ -224,6 +230,10 @@ impl WalletData {
         self.wallets
             .entry(xpriv_str.to_string())
             .or_insert_with(|| WalletElement::new("", "")) // Create a new WalletElement if key doesn't exist
+    }
+
+    pub fn get_selected_walletx_string(&self) -> String {
+        return self.selected_walletx.clone().unwrap();
     }
 }
 
