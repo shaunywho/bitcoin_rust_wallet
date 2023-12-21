@@ -8,6 +8,7 @@
 // Send testnet coin back to https://bitcoinfaucet.uo1.net/send.php
 
 use bdk::bitcoin::bip32::ExtendedPrivKey;
+use bdk::bitcoin::Transaction;
 
 use bdk::template::Bip84;
 use bdk::{self, KeychainKind};
@@ -98,7 +99,11 @@ pub fn generate_wallet_rc_obj(
     return Ok(Rc::new(wallet?));
 }
 
-pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, amount: u64) {
+pub fn make_transaction(
+    wallet: &Wallet<MemoryDatabase>,
+    recipient_str: &str,
+    amount: u64,
+) -> Transaction {
     let balance = wallet.get_balance().unwrap();
     println!("Available balance: {}", balance);
     let recipient_address = Address::from_str(recipient_str)
@@ -117,6 +122,7 @@ pub fn make_transaction(wallet: &Wallet<MemoryDatabase>, recipient_str: &str, am
     let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
 
     let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
+    return psbt.extract_tx();
 }
 
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -176,6 +182,19 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
+
+// use bdk::TransactionDetails;
+
+// fn get_output_addresses(tx_details: &TransactionDetails) -> Vec<String> {
+//     tx_details
+//         .transaction
+//         .unwrap()
+//         .output
+//         .iter()
+//         .filter_map(|output| output.script_pubkey.address(Network::Bitcoin)) // Replace Network::Bitcoin with the appropriate network
+//         .map(|address| address.to_string())
+//         .collect()
+// }
 
 #[cfg(test)]
 mod tests {
