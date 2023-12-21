@@ -1,5 +1,6 @@
 use bdk::bitcoin::bip32::ExtendedPrivKey;
-
+use bdk::bitcoin::Transaction;
+use bdk::blockchain::Blockchain;
 use bdk::blockchain::ElectrumBlockchain;
 use bdk::database::MemoryDatabase;
 use bdk::electrum_client::Client;
@@ -18,7 +19,6 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 use std::str::FromStr;
-use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -38,7 +38,7 @@ pub struct SyncData {
 pub struct WalletData {
     pub wallets: HashMap<String, WalletElement>,
     filename: String,
-    blockchain: Arc<Mutex<ElectrumBlockchain>>,
+    blockchain: Arc<ElectrumBlockchain>,
     pub selected_wallet: Option<String>,
 }
 
@@ -72,11 +72,13 @@ impl WalletElement {
         };
     }
 
-    pub fn start_wallet_syncing_worker(&self, sync_sender: Sender<SyncData>) -> JoinHandle<()> {
+    pub fn start_wallet_syncing_worker(
+        &self,
+        blockchain: Arc<ElectrumBlockchain>,
+        sync_sender: Sender<SyncData>,
+    ) -> JoinHandle<()> {
         let wallet_clone = Arc::clone(&self.wallet_obj);
         let handle = thread::spawn(move || {
-            let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
-            let blockchain = ElectrumBlockchain::from(client);
             let mut wallet_locked = wallet_clone.lock().unwrap();
             wallet_locked.sync(&blockchain, SyncOptions::default());
             let balance = wallet_locked.get_balance().unwrap();
@@ -99,17 +101,10 @@ impl WalletElement {
         }
     }
 
-    pub fn send_transaction(&self, recipient_address: &str, amount: u64) {
+    pub fn make_transaction(&self, recipient_address: &str, amount: u64) -> Transaction {
         let wallet_locked = self.wallet_obj.lock().unwrap();
-        make_transaction(&wallet_locked, recipient_address, amount);
-    }
-
-    pub fn set_transactions(&mut self, transactions: Vec<TransactionDetails>) {
-        self.transactions = Some(transactions);
-    }
-
-    pub fn set_balance(&mut self, balance: Balance) {
-        self.balance = Some(balance);
+        let transaction = make_transaction(&wallet_locked, recipient_address, amount);
+        return transaction;
     }
 }
 
@@ -123,13 +118,21 @@ impl WalletData {
         }
     }
 
+    pub fn sync_current_wallet(&mut self, sync_sender: Sender<SyncData>) -> JoinHandle<()> {
+        let blockchain = Arc::clone(&self.blockchain);
+        let handle = self
+            .get_selected_wallet_element()
+            .start_wallet_syncing_worker(blockchain, sync_sender);
+        return handle;
+    }
+
     pub fn new(filename: &str) -> Self {
         let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
         let blockchain = ElectrumBlockchain::from(client);
         let wallet_data = Self {
             wallets: HashMap::new(),
             filename: filename.to_string(),
-            blockchain: Arc::new(Mutex::new(blockchain)),
+            blockchain: Arc::new(blockchain),
             selected_wallet: None,
         };
 
@@ -239,6 +242,13 @@ impl WalletData {
     pub fn get_selected_wallet_element(&mut self) -> &mut WalletElement {
         let wallet_string = self.get_selected_wallet_string();
         return self.get_wallet_element(&wallet_string);
+    }
+
+    pub fn send_transaction(&mut self, recipient_address: &str, amount: u64) {
+        let transaction = self
+            .get_selected_wallet_element()
+            .make_transaction(recipient_address, amount);
+        self.blockchain.broadcast(&transaction).unwrap();
     }
 }
 
