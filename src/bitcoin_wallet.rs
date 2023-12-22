@@ -104,8 +104,6 @@ pub fn make_transaction(
     recipient_str: &str,
     amount: u64,
 ) -> Transaction {
-    let balance = wallet.get_balance().unwrap();
-    println!("Available balance: {}", balance);
     let recipient_address = Address::from_str(recipient_str)
         .unwrap()
         .require_network(Network::Testnet)
@@ -174,6 +172,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     println!("Transaction Signed: {}", finalized);
 
     let raw_transaction = psbt.extract_tx();
+
     let txid = raw_transaction.txid();
     // blockchain.broadcast(&raw_transaction)?;
     println!(
@@ -182,19 +181,6 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
-
-// use bdk::TransactionDetails;
-
-// fn get_output_addresses(tx_details: &TransactionDetails) -> Vec<String> {
-//     tx_details
-//         .transaction
-//         .unwrap()
-//         .output
-//         .iter()
-//         .filter_map(|output| output.script_pubkey.address(Network::Bitcoin)) // Replace Network::Bitcoin with the appropriate network
-//         .map(|address| address.to_string())
-//         .collect()
-// }
 
 #[cfg(test)]
 mod tests {

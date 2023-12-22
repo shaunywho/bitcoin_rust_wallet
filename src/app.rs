@@ -227,14 +227,16 @@ impl MyApp {
         while let Ok(sync_data) = self.sync_data_receiver.try_recv() {
             let wallet = self.wallet_data.get_selected_wallet_element();
             wallet.balance = Some(sync_data.balance);
-            // let transaction = &sync_data.transactions[0];
-            // println!("Received: {}", transaction.received);
-            // println!("Sent: {}", transaction.sent);
-            // println!("Fee: {}", transaction.fee.unwrap());
-            // println!("txid: {}", transaction.txid);
-            // println!("To: {:?}", transaction.transaction.clone().unwrap().output);
+            let mut transactions = sync_data.transactions;
+            transactions.sort_by(|a, b| match (&a.confirmation_time, &b.confirmation_time) {
+                (Some(a), Some(b)) => b.cmp(&a),
 
-            wallet.transactions = Some(sync_data.transactions);
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, Some(_)) => std::cmp::Ordering::Less,
+
+                (None, None) => std::cmp::Ordering::Equal,
+            });
+            wallet.sorted_transactions = Some(transactions);
         }
         self.active_threads
             .lock()

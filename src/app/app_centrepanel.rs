@@ -6,6 +6,7 @@ use super::{
 };
 use crate::bitcoin_wallet::generate_mnemonic_string;
 use chrono::prelude::*;
+use chrono_tz::Tz;
 
 impl MyApp {
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
@@ -52,8 +53,7 @@ impl MyApp {
                 })
                 .body(|mut body| {
                     let wallet = self.wallet_data.get_selected_wallet_element();
-                    if let Some(transactions) = wallet.transactions.clone() {
-                        println!("{:?}", transactions.len());
+                    if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
@@ -62,23 +62,31 @@ impl MyApp {
                                 });
 
                                 row.col(|ui| {
-                                    let amount: String;
-                                    let transaction =
+                                    let transaction_total =
                                         transaction.received as i64 - transaction.sent as i64;
-                                    ui.label(format!("{}", transaction));
+                                    let transaction_string = if transaction_total < 0 {
+                                        format!(
+                                            "{} (fee: {})",
+                                            transaction_total,
+                                            transaction.fee.unwrap()
+                                        )
+                                    } else {
+                                        format!("+{}", transaction_total)
+                                    };
+                                    ui.label(transaction_string);
                                 });
 
                                 row.col(|ui| {
                                     let confirmation_time_str: String;
                                     if let Some(confirmation_time) = &transaction.confirmation_time
                                     {
-                                        let confirmation_time_utc = Utc
+                                        let confirmation_time_local = Local
                                             .timestamp_opt(confirmation_time.timestamp as i64, 0)
                                             .unwrap();
 
                                         confirmation_time_str = format!(
                                             "{:?} Confirmed",
-                                            confirmation_time_utc.to_string()
+                                            confirmation_time_local.to_string()
                                         );
                                     } else {
                                         confirmation_time_str = "Pending".to_string();

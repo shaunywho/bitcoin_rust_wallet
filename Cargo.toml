@@ -35,4 +35,5 @@ chrono = "0.4.31"
 bdk_file_store = "0.2.0"
 qrcode = { version = "0.12"}
 qrcode-generator = "4.1.9"
+chrono-tz = "0.8.4"
 
