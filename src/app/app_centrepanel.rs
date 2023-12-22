@@ -1,4 +1,4 @@
-use egui::Ui;
+use egui::{InnerResponse, Ui};
 use egui_extras::{Column, TableBuilder};
 
 use super::{
@@ -163,8 +163,12 @@ impl MyApp {
 
     pub fn render_contacts_panel(&mut self, ui: &mut Ui) {}
 
-    pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    pub fn render_centrepanel(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+    ) -> InnerResponse<()> {
+        let response = egui::CentralPanel::default().show(ctx, |ui| {
             if self.dialog_box.is_some() {
                 ui.set_enabled(false)
             }
@@ -192,5 +196,6 @@ impl MyApp {
                 },
             }
         });
+        return response;
     }
 }

@@ -12,6 +12,7 @@ use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
 
+use egui::InnerResponse;
 use qrcode_generator::QrCodeEcc;
 use std::num::ParseIntError;
 #[derive(PartialEq)]
@@ -19,13 +20,6 @@ enum WalletFileState {
     WalletFileNotAvailable,
     WalletNotInitialised,
     WalletAvailable,
-}
-
-enum InvalidTransactionTypes {
-    InvalidBitcoinAddress,
-    InvalidAmountNotNumeric,
-    InvalidAmountNotEnough,
-    InvalidOwnAddress,
 }
 
 #[derive(PartialEq)]
@@ -102,8 +96,8 @@ impl MyApp {
         }
     }
 
-    fn render_dialog_box(&mut self, ctx: &egui::Context) {
-        egui::Window::new(self.dialog_box.as_ref().unwrap().title)
+    fn render_dialog_box(&mut self, ctx: &egui::Context) -> InnerResponse<Option<()>> {
+        let response = egui::Window::new(self.dialog_box.as_ref().unwrap().title)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
@@ -131,6 +125,7 @@ impl MyApp {
                     }
                 });
             });
+        return response.unwrap();
     }
 }
 

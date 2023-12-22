@@ -1,8 +1,14 @@
+use egui::InnerResponse;
+
 use super::{MyApp, SidePanelState};
 
 impl MyApp {
-    pub fn render_sidepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
+    pub fn render_sidepanel(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+    ) -> InnerResponse<()> {
+        let response = egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
             match self.dialog_box {
                 None => (),
                 _ => ui.set_enabled(false),
@@ -63,5 +69,6 @@ impl MyApp {
                 self.side_panel_state = side_panel_state;
             };
         });
+        return response;
     }
 }
