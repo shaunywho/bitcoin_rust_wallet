@@ -2,14 +2,16 @@ use egui::{InnerResponse, Ui};
 use egui_extras::{Column, TableBuilder};
 
 use super::{
-    generate_qrcode_from_address, DialogBox, DialogBoxEnum, MyApp, SidePanelState, WalletFileState,
+    generate_qrcode_from_address, CentralPanelState, DialogBox, DialogBoxEnum, MyApp,
+    SidePanelState,
 };
 use crate::bitcoin_wallet::generate_mnemonic_string;
 use chrono::prelude::*;
 use chrono_tz::Tz;
 
 impl MyApp {
-    pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
+    pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
+        ui.set_enabled(enabled);
         ui.vertical_centered(|ui| {
             let wallet = self.wallet_data.get_selected_wallet_element();
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
@@ -58,7 +60,6 @@ impl MyApp {
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
                                     ui.label(format!("{}", transaction.txid));
-                                    println!("{}", transaction.txid)
                                 });
 
                                 row.col(|ui| {
@@ -99,7 +100,8 @@ impl MyApp {
                 });
         });
     }
-    pub fn render_sending_panel(&mut self, ui: &mut Ui) {
+    pub fn render_sending_panel(&mut self, enabled: bool, ui: &mut Ui) {
+        ui.set_enabled(enabled);
         ui.heading(format!(
             "Wallet Balance: {:?}",
             self.wallet_data.get_selected_wallet_element().get_total()
@@ -146,7 +148,8 @@ impl MyApp {
         }
     }
 
-    pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
+    pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
+        ui.set_enabled(enabled);
         let wallet = self.wallet_data.get_selected_wallet_element();
         let address = &wallet.address;
         ui.label(format!("Public Key: {:?}", address));
@@ -161,41 +164,49 @@ impl MyApp {
         ui.add(egui::Image::from_texture(&img));
     }
 
-    pub fn render_contacts_panel(&mut self, ui: &mut Ui) {}
+    pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
+
+    pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
+        if ui.button("Create Wallet").clicked() {
+            // self.string_scratchpad[0] = generate_mnemonic_string().unwrap();
+            let new_mnemonic = generate_mnemonic_string().unwrap();
+            self.dialog_box = Some(DialogBox {
+                dialog_box_enum: DialogBoxEnum::NewMnemonic,
+                title: "New Wallet Mnemonic",
+                message: Some(new_mnemonic),
+                line_edit: None,
+                optional: false,
+            });
+        }
+    }
+
+    pub fn render_password_panel(&mut self, ui: &mut Ui) {
+        ui.set_enabled(true);
+        let password_entry =
+            egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
+        ui.add(password_entry);
+        if ui.button("Enter").clicked() {
+            self.password_entry_string = String::new();
+            self.central_panel_state = CentralPanelState::WalletAvailable;
+        }
+    }
 
     pub fn render_centrepanel(
         &mut self,
+        enabled: bool,
         ctx: &egui::Context,
         _frame: &mut eframe::Frame,
-    ) -> InnerResponse<()> {
-        let response = egui::CentralPanel::default().show(ctx, |ui| {
-            if self.dialog_box.is_some() {
-                ui.set_enabled(false)
-            }
-
-            match self.state {
-                WalletFileState::WalletFileNotAvailable => {
-                    if ui.button("Create Wallet").clicked() {
-                        // self.string_scratchpad[0] = generate_mnemonic_string().unwrap();
-                        let new_mnemonic = generate_mnemonic_string().unwrap();
-                        self.dialog_box = Some(DialogBox {
-                            dialog_box_enum: DialogBoxEnum::NewMnemonic,
-                            title: "New Wallet Mnemonic",
-                            message: Some(new_mnemonic),
-                            line_edit: None,
-                            optional: false,
-                        });
-                    }
-                }
-                WalletFileState::WalletNotInitialised => {}
-                _ => match self.side_panel_state {
-                    SidePanelState::Wallet => self.render_wallet_panel(ui),
-                    SidePanelState::Sending => self.render_sending_panel(ui),
-                    SidePanelState::Receiving => self.render_receiving_panel(ui),
-                    SidePanelState::Contacts => self.render_contacts_panel(ui),
-                },
-            }
+    ) {
+        egui::CentralPanel::default().show(ctx, |ui| match self.central_panel_state {
+            CentralPanelState::WalletFileNotAvailable => self.render_create_wallet_panel(ui),
+            CentralPanelState::WalletNotInitialised => {}
+            CentralPanelState::PasswordNeeded => self.render_password_panel(ui),
+            _ => match self.side_panel_state {
+                SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
+                SidePanelState::Sending => self.render_sending_panel(enabled, ui),
+                SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
+                SidePanelState::Contacts => self.render_contacts_panel(enabled, ui),
+            },
         });
-        return response;
     }
 }

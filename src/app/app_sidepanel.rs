@@ -5,14 +5,12 @@ use super::{MyApp, SidePanelState};
 impl MyApp {
     pub fn render_sidepanel(
         &mut self,
+        enabled: bool,
         ctx: &egui::Context,
         _frame: &mut eframe::Frame,
-    ) -> InnerResponse<()> {
-        let response = egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
-            match self.dialog_box {
-                None => (),
-                _ => ui.set_enabled(false),
-            }
+    ) {
+        egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
+            ui.set_enabled(enabled);
 
             let side_panel_state = SidePanelState::Wallet;
             ui.add_space(10.0);
@@ -69,6 +67,5 @@ impl MyApp {
                 self.side_panel_state = side_panel_state;
             };
         });
-        return response;
     }
 }
