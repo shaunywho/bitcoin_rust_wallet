@@ -1,12 +1,16 @@
+use egui::InnerResponse;
+
 use super::{MyApp, SidePanelState};
 
 impl MyApp {
-    pub fn render_sidepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn render_sidepanel(
+        &mut self,
+        enabled: bool,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+    ) {
         egui::SidePanel::left("my_left_panel").show(ctx, |ui| {
-            match self.dialog_box {
-                None => (),
-                _ => ui.set_enabled(false),
-            }
+            ui.set_enabled(enabled);
 
             let side_panel_state = SidePanelState::Wallet;
             ui.add_space(10.0);

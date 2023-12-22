@@ -11,23 +11,19 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
-
+const PASSWORD_NEEDED_TIMEOUT_S: i64 = 3;
+use chrono::{DateTime, Duration};
+use chrono_tz::Tz;
+use egui::InnerResponse;
 use qrcode_generator::QrCodeEcc;
 use std::num::ParseIntError;
 #[derive(PartialEq)]
-enum WalletFileState {
+enum CentralPanelState {
     WalletFileNotAvailable,
     WalletNotInitialised,
+    PasswordNeeded,
     WalletAvailable,
 }
-
-enum InvalidTransactionTypes {
-    InvalidBitcoinAddress,
-    InvalidAmountNotNumeric,
-    InvalidAmountNotEnough,
-    InvalidOwnAddress,
-}
-
 #[derive(PartialEq)]
 enum SidePanelState {
     Wallet,
@@ -51,13 +47,8 @@ pub enum DialogBoxEnum {
     InvalidTransaction,
 }
 
-struct WalletApp {
-    state: WalletFileState,
-    wallet_data: Option<WalletData>,
-}
-
 pub struct MyApp {
-    state: WalletFileState,
+    central_panel_state: CentralPanelState,
     side_panel_state: SidePanelState,
     wallet_data: WalletData,
     // selected_wallet: Option<String>,
@@ -67,7 +58,10 @@ pub struct MyApp {
     rename_wallet_string: String,
     recipient_address_string: String,
     amount_to_send_string: String,
+    password_entry_string: String,
     dialog_box: Option<DialogBox>,
+    last_interaction_time: DateTime<chrono::Local>,
+    // password_needed: bool,
 }
 
 impl MyApp {
@@ -102,8 +96,8 @@ impl MyApp {
         }
     }
 
-    fn render_dialog_box(&mut self, ctx: &egui::Context) {
-        egui::Window::new(self.dialog_box.as_ref().unwrap().title)
+    fn render_dialog_box(&mut self, ctx: &egui::Context) -> InnerResponse<Option<()>> {
+        let response = egui::Window::new(self.dialog_box.as_ref().unwrap().title)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
@@ -131,33 +125,36 @@ impl MyApp {
                     }
                 });
             });
+        return response.unwrap();
     }
 }
 
 impl MyApp {
     pub fn new() -> Self {
-        let mut state = WalletFileState::WalletFileNotAvailable;
+        let mut central_panel_state = CentralPanelState::WalletFileNotAvailable;
         let side_panel_state = SidePanelState::Wallet;
         let mut wallet_data = WalletData::new(FILENAME);
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
         let rename_wallet_string = String::new();
         let recipient_address_string = String::new();
         let amount_to_send_string = String::new();
+        let password_entry_string = String::new();
         let dialog_box = None;
         let active_threads = Arc::new(Mutex::new(HashMap::new()));
-
+        let last_interaction_time = chrono::offset::Local::now();
         let slf = Self {
-            state,
+            central_panel_state,
             side_panel_state,
             wallet_data,
             sync_data_sender,
             sync_data_receiver,
             active_threads,
-
             rename_wallet_string,
             recipient_address_string,
             amount_to_send_string,
+            password_entry_string,
             dialog_box,
+            last_interaction_time,
         };
 
         slf
@@ -167,9 +164,9 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_wallet_state();
+        self.access_timeout();
         if let Some(_private_key) = &self.wallet_data.selected_wallet {
             self.wallet_poll();
-            // self.update_from_wallet_sync();
         }
 
         self.render_window(ctx, _frame);
@@ -227,14 +224,16 @@ impl MyApp {
         while let Ok(sync_data) = self.sync_data_receiver.try_recv() {
             let wallet = self.wallet_data.get_selected_wallet_element();
             wallet.balance = Some(sync_data.balance);
-            let transaction = &sync_data.transactions[0];
-            println!("Received: {}", transaction.received);
-            println!("Sent: {}", transaction.sent);
-            println!("Fee: {}", transaction.fee.unwrap());
-            println!("txid: {}", transaction.txid);
-            println!("To: {:?}", transaction.transaction.clone().unwrap().output);
+            let mut transactions = sync_data.transactions;
+            transactions.sort_by(|a, b| match (&a.confirmation_time, &b.confirmation_time) {
+                (Some(a), Some(b)) => b.cmp(&a),
 
-            wallet.transactions = Some(sync_data.transactions);
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, Some(_)) => std::cmp::Ordering::Less,
+
+                (None, None) => std::cmp::Ordering::Equal,
+            });
+            wallet.sorted_transactions = Some(transactions);
         }
         self.active_threads
             .lock()
@@ -261,11 +260,11 @@ impl MyApp {
 
 impl MyApp {
     fn update_wallet_state(&mut self) {
-        match self.state {
-            WalletFileState::WalletNotInitialised => {
+        match self.central_panel_state {
+            CentralPanelState::WalletNotInitialised => {
                 self.wallet_data.initialise_from_wallet_file();
                 if !self.wallet_data.wallets.is_empty() {
-                    self.state = WalletFileState::WalletAvailable;
+                    self.central_panel_state = CentralPanelState::WalletAvailable;
                     let selected_wallet_xpriv_str = self.wallet_data.get_first_wallet_xpriv_str();
                     let selected_wallet_element = self
                         .wallet_data
@@ -273,11 +272,11 @@ impl MyApp {
                     self.wallet_data.selected_wallet =
                         Option::Some(selected_wallet_xpriv_str.clone());
                 }
-                self.state = WalletFileState::WalletAvailable;
+                self.central_panel_state = CentralPanelState::WalletAvailable;
             }
-            WalletFileState::WalletFileNotAvailable => {
+            CentralPanelState::WalletFileNotAvailable => {
                 if self.wallet_data.does_file_exist() {
-                    self.state = WalletFileState::WalletNotInitialised;
+                    self.central_panel_state = CentralPanelState::WalletNotInitialised;
                 }
             }
             _ => (),
@@ -285,13 +284,29 @@ impl MyApp {
     }
 
     fn render_window(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.render_sidepanel(ctx, _frame);
-        self.render_toppanel(ctx, _frame);
-        self.render_centrepanel(ctx, _frame);
+        let mut enabled = true;
 
         if let Some(_) = self.dialog_box {
             self.render_dialog_box(ctx);
+            enabled = false;
         }
+        if self.central_panel_state == CentralPanelState::PasswordNeeded {
+            self.dialog_box = None;
+            enabled = false;
+        }
+        self.render_sidepanel(enabled, ctx, _frame);
+        self.render_toppanel(enabled, ctx, _frame);
+        self.render_centrepanel(enabled, ctx, _frame);
+    }
+    pub fn access_timeout(&mut self) {
+        let current_time = chrono::offset::Local::now();
+
+        if (current_time - self.last_interaction_time)
+            > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
+        {
+            self.central_panel_state = CentralPanelState::PasswordNeeded;
+        }
+        self.last_interaction_time = current_time;
     }
 }
 

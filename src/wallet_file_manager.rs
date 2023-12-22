@@ -48,7 +48,7 @@ pub struct WalletElement {
     pub address: String,
     pub wallet_obj: Arc<Mutex<Wallet<MemoryDatabase>>>,
     pub balance: Option<Balance>,
-    pub transactions: Option<Vec<TransactionDetails>>,
+    pub sorted_transactions: Option<Vec<TransactionDetails>>,
 }
 
 impl WalletElement {
@@ -68,7 +68,7 @@ impl WalletElement {
             address: address,
             wallet_obj: Arc::new(Mutex::new(wallet_obj)),
             balance: None,
-            transactions: None,
+            sorted_transactions: None,
         };
     }
 

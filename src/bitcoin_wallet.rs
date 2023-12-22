@@ -1,10 +1,3 @@
-// Copyright (c) 2020-2021 Bitcoin Dev Kit Developers
-//
-// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
-// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
-// You may not use this file except in accordance with one or both of these
-// licenses.
 // Send testnet coin back to https://bitcoinfaucet.uo1.net/send.php
 
 use bdk::bitcoin::bip32::ExtendedPrivKey;
@@ -15,7 +8,6 @@ use bdk::{self, KeychainKind};
 use bdk::{
     bitcoin::Address,
     bitcoin::Network,
-    blockchain::Blockchain,
     blockchain::ElectrumBlockchain,
     database::MemoryDatabase,
     electrum_client::Client,
@@ -28,7 +20,6 @@ use bdk::{
     SignOptions, SyncOptions,
 };
 
-use std::rc::Rc;
 use std::str::FromStr;
 
 pub fn generate_mnemonic<Ctx>() -> Result<GeneratedKey<Mnemonic, Ctx>, anyhow::Error>
@@ -36,12 +27,12 @@ where
     Ctx: ScriptContext,
 {
     let mnemonic = Mnemonic::generate((WordCount::Words12, Language::English)).unwrap();
-    Ok(mnemonic)
+    return Ok(mnemonic);
 }
 
 pub fn generate_mnemonic_string() -> Result<String, anyhow::Error> {
     let mnemonic = generate_mnemonic::<bdk::descriptor::Segwitv0>()?;
-    Ok(mnemonic.to_string())
+    return Ok(mnemonic.to_string());
 }
 
 pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
@@ -50,23 +41,7 @@ pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
     let xkey: ExtendedKey = mnemonic.into_extended_key()?;
     // Get xprv from the extended key
     let xprv = xkey.into_xprv(Network::Testnet).unwrap();
-    Ok(xprv)
-}
-
-pub fn get_transactions(wallet: &Wallet<MemoryDatabase>) {
-    let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
-    let blockchain = ElectrumBlockchain::from(client);
-    wallet.sync(&blockchain, SyncOptions::default());
-    println!("{:?}", wallet.list_transactions(true).unwrap());
-}
-
-pub fn get_balance(wallet: &Wallet<MemoryDatabase>) -> u64 {
-    let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
-    let blockchain = ElectrumBlockchain::from(client);
-    wallet.sync(&blockchain, SyncOptions::default());
-    let balance = wallet.get_balance().unwrap();
-
-    return balance.confirmed;
+    return Ok(xprv);
 }
 
 pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
@@ -81,22 +56,12 @@ pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, 
 
 pub fn is_valid_bitcoin_address(address: &str) -> bool {
     if let Ok(addr) = Address::from_str(address) {
-        // You can also specify the Bitcoin network (mainnet, testnet, etc.)
-        // For example, let network = Network::Bitcoin; or Network::Testnet
         let network = Network::Testnet;
 
-        // Check if the address is valid for the specified network
-        addr.is_valid_for_network(network)
+        return addr.is_valid_for_network(network);
     } else {
-        false // Parsing failed, so the address is not valid
+        return false;
     }
-}
-
-pub fn generate_wallet_rc_obj(
-    xprv: ExtendedPrivKey,
-) -> Result<Rc<Wallet<MemoryDatabase>>, anyhow::Error> {
-    let wallet = generate_wallet(xprv);
-    return Ok(Rc::new(wallet?));
 }
 
 pub fn make_transaction(
@@ -104,8 +69,6 @@ pub fn make_transaction(
     recipient_str: &str,
     amount: u64,
 ) -> Transaction {
-    let balance = wallet.get_balance().unwrap();
-    println!("Available balance: {}", balance);
     let recipient_address = Address::from_str(recipient_str)
         .unwrap()
         .require_network(Network::Testnet)
@@ -174,6 +137,7 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     println!("Transaction Signed: {}", finalized);
 
     let raw_transaction = psbt.extract_tx();
+
     let txid = raw_transaction.txid();
     // blockchain.broadcast(&raw_transaction)?;
     println!(
@@ -183,26 +147,13 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// use bdk::TransactionDetails;
-
-// fn get_output_addresses(tx_details: &TransactionDetails) -> Vec<String> {
-//     tx_details
-//         .transaction
-//         .unwrap()
-//         .output
-//         .iter()
-//         .filter_map(|output| output.script_pubkey.address(Network::Bitcoin)) // Replace Network::Bitcoin with the appropriate network
-//         .map(|address| address.to_string())
-//         .collect()
-// }
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use bdk::bitcoin::bip32::ExtendedPrivKey;
 
-    use crate::bitcoin_wallet::{generate_wallet_rc_obj, generate_xpriv};
+    use crate::bitcoin_wallet::generate_xpriv;
 
     #[test]
     fn test_generating_wallet() {
@@ -210,9 +161,8 @@ mod tests {
         let mnemonic_0 =
             "limb capital decade way negative task moral empty virus fragile copper elegant";
         let _mnemonic_1 = &String::from(mnemonic_0)[..];
-        let xkey_0 = generate_xpriv(mnemonic_0).unwrap();
-        let xkey_1 = generate_xpriv(mnemonic_0.clone()).unwrap();
-        let _wallet_0 = generate_wallet_rc_obj(xkey_0).unwrap();
+
+        let xkey_1 = generate_xpriv(mnemonic_0).unwrap();
 
         let xpriv = xkey_1;
         let xpriv_str = xpriv.to_string();
