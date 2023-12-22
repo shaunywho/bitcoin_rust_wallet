@@ -47,11 +47,6 @@ pub enum DialogBoxEnum {
     InvalidTransaction,
 }
 
-// struct WalletApp {
-//     state: CentralPanelState,
-//     wallet_data: Option<WalletData>,
-// }
-
 pub struct MyApp {
     central_panel_state: CentralPanelState,
     side_panel_state: SidePanelState,
@@ -147,7 +142,6 @@ impl MyApp {
         let dialog_box = None;
         let active_threads = Arc::new(Mutex::new(HashMap::new()));
         let last_interaction_time = chrono::offset::Local::now();
-        let password_needed = false;
         let slf = Self {
             central_panel_state,
             side_panel_state,
@@ -161,7 +155,6 @@ impl MyApp {
             password_entry_string,
             dialog_box,
             last_interaction_time,
-            // password_needed,
         };
 
         slf
@@ -174,7 +167,6 @@ impl eframe::App for MyApp {
         self.access_timeout();
         if let Some(_private_key) = &self.wallet_data.selected_wallet {
             self.wallet_poll();
-            // self.update_from_wallet_sync();
         }
 
         self.render_window(ctx, _frame);
@@ -298,12 +290,10 @@ impl MyApp {
             self.render_dialog_box(ctx);
             enabled = false;
         }
-
         if self.central_panel_state == CentralPanelState::PasswordNeeded {
             self.dialog_box = None;
             enabled = false;
         }
-
         self.render_sidepanel(enabled, ctx, _frame);
         self.render_toppanel(enabled, ctx, _frame);
         self.render_centrepanel(enabled, ctx, _frame);
