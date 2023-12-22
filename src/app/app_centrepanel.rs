@@ -1,11 +1,11 @@
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
-use crate::bitcoin_wallet::generate_mnemonic_string;
-
 use super::{
     generate_qrcode_from_address, DialogBox, DialogBoxEnum, MyApp, SidePanelState, WalletFileState,
 };
+use crate::bitcoin_wallet::generate_mnemonic_string;
+use chrono::prelude::*;
 
 impl MyApp {
     pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
@@ -33,27 +33,61 @@ impl MyApp {
         if ui.button("Copy").clicked() {
             ui.output_mut(|o| o.copied_text = public_key.to_string());
         };
+
         ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
-                .column(Column::exact(100.0).resizable(false))
-                .column(Column::exact(100.0))
+                .column(Column::exact(400.0).resizable(false))
+                .column(Column::exact(200.0))
+                .column(Column::exact(200.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
-                        ui.heading("First column");
+                        ui.heading("Txid");
                     });
                     header.col(|ui| {
-                        ui.heading("Second column");
+                        ui.heading("Amount");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Date");
                     });
                 })
                 .body(|mut body| {
-                    body.row(30.0, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Hello");
-                        });
-                        row.col(|ui| {
-                            ui.button("world!");
-                        });
-                    });
+                    let wallet = self.wallet_data.get_selected_wallet_element();
+                    if let Some(transactions) = wallet.transactions.clone() {
+                        println!("{:?}", transactions.len());
+                        for transaction in transactions.iter() {
+                            body.row(30.0, |mut row| {
+                                row.col(|ui| {
+                                    ui.label(format!("{}", transaction.txid));
+                                    println!("{}", transaction.txid)
+                                });
+
+                                row.col(|ui| {
+                                    let amount: String;
+                                    let transaction =
+                                        transaction.received as i64 - transaction.sent as i64;
+                                    ui.label(format!("{}", transaction));
+                                });
+
+                                row.col(|ui| {
+                                    let confirmation_time_str: String;
+                                    if let Some(confirmation_time) = &transaction.confirmation_time
+                                    {
+                                        let confirmation_time_utc = Utc
+                                            .timestamp_opt(confirmation_time.timestamp as i64, 0)
+                                            .unwrap();
+
+                                        confirmation_time_str = format!(
+                                            "{:?} Confirmed",
+                                            confirmation_time_utc.to_string()
+                                        );
+                                    } else {
+                                        confirmation_time_str = "Pending".to_string();
+                                    }
+                                    ui.label(confirmation_time_str);
+                                });
+                            });
+                        }
+                    }
                 });
         });
     }

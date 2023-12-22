@@ -227,12 +227,12 @@ impl MyApp {
         while let Ok(sync_data) = self.sync_data_receiver.try_recv() {
             let wallet = self.wallet_data.get_selected_wallet_element();
             wallet.balance = Some(sync_data.balance);
-            let transaction = &sync_data.transactions[0];
-            println!("Received: {}", transaction.received);
-            println!("Sent: {}", transaction.sent);
-            println!("Fee: {}", transaction.fee.unwrap());
-            println!("txid: {}", transaction.txid);
-            println!("To: {:?}", transaction.transaction.clone().unwrap().output);
+            // let transaction = &sync_data.transactions[0];
+            // println!("Received: {}", transaction.received);
+            // println!("Sent: {}", transaction.sent);
+            // println!("Fee: {}", transaction.fee.unwrap());
+            // println!("txid: {}", transaction.txid);
+            // println!("To: {:?}", transaction.transaction.clone().unwrap().output);
 
             wallet.transactions = Some(sync_data.transactions);
         }
