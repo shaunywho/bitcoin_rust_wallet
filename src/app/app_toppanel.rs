@@ -8,7 +8,7 @@ impl MyApp {
         ctx: &egui::Context,
         _frame: &mut eframe::Frame,
     ) {
-        let response = egui::TopBottomPanel::top("Headerbar")
+        egui::TopBottomPanel::top("Headerbar")
             .exact_height(50.0)
             .show(ctx, |ui| {
                 ui.set_enabled(enabled);

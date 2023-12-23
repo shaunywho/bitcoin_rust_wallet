@@ -1,0 +1,13 @@
+{
+  "password": "Password",
+  "wallets": [
+    {
+      "priv_key": "asdasdasd",
+      "wallet_name": "Wallet Name 1"
+    },
+    {
+      "priv_key": "asdasdasd",
+      "wallet_name": "Wallet Name 1"
+    }
+  ]
+}

@@ -5,15 +5,16 @@ use super::{
     generate_qrcode_from_address, CentralPanelState, DialogBox, DialogBoxEnum, MyApp,
     SidePanelState,
 };
-use crate::bitcoin_wallet::generate_mnemonic_string;
+
 use chrono::prelude::*;
 use chrono_tz::Tz;
+use zxcvbn::zxcvbn;
 
 impl MyApp {
     pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_data.get_selected_wallet_element();
+            let wallet = self.wallet_file_data.get_selected_wallet_element();
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
@@ -27,7 +28,7 @@ impl MyApp {
                 });
             }
         });
-        let wallet = self.wallet_data.get_selected_wallet_element();
+        let wallet = self.wallet_file_data.get_selected_wallet_element();
         ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
         let public_key = &wallet.address;
@@ -54,7 +55,7 @@ impl MyApp {
                     });
                 })
                 .body(|mut body| {
-                    let wallet = self.wallet_data.get_selected_wallet_element();
+                    let wallet = self.wallet_file_data.get_selected_wallet_element();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
                             body.row(30.0, |mut row| {
@@ -104,7 +105,9 @@ impl MyApp {
         ui.set_enabled(enabled);
         ui.heading(format!(
             "Wallet Balance: {:?}",
-            self.wallet_data.get_selected_wallet_element().get_total()
+            self.wallet_file_data
+                .get_selected_wallet_element()
+                .get_total()
         ));
         ui.add_space(50.0);
         ui.vertical_centered(|ui| {
@@ -150,7 +153,7 @@ impl MyApp {
 
     pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
-        let wallet = self.wallet_data.get_selected_wallet_element();
+        let wallet = self.wallet_file_data.get_selected_wallet_element();
         let address = &wallet.address;
         ui.label(format!("Public Key: {:?}", address));
         // Encode some data into bits.
@@ -166,28 +169,101 @@ impl MyApp {
 
     pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
 
+    // pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
+    //     if ui.button("Create Wallet").clicked() {
+    //         let new_mnemonic = generate_mnemonic_string().unwrap();
+    //         self.dialog_box = Some(DialogBox {
+    //             dialog_box_enum: DialogBoxEnum::NewMnemonic,
+    //             title: "New Wallet Mnemonic",
+    //             message: Some(new_mnemonic),
+    //             line_edit: None,
+    //             optional: false,
+    //         });
+    //     }
+    // }
+
     pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
-        if ui.button("Create Wallet").clicked() {
-            // self.string_scratchpad[0] = generate_mnemonic_string().unwrap();
-            let new_mnemonic = generate_mnemonic_string().unwrap();
-            self.dialog_box = Some(DialogBox {
-                dialog_box_enum: DialogBoxEnum::NewMnemonic,
-                title: "New Wallet Mnemonic",
-                message: Some(new_mnemonic),
-                line_edit: None,
-                optional: false,
-            });
+        ui.heading("Write down the following mnemonic");
+        ui.horizontal(|ui| {
+            ui.label(&self.mnemonic_string);
+            if ui.button("Copy Mnemonic").clicked() {
+                ui.output_mut(|o| o.copied_text = self.mnemonic_string.clone());
+            }
+        });
+        ui.label("Type and confirm the mnemonic above");
+        ui.text_edit_singleline(&mut self.confirm_mnemonic_string);
+        if ui.button("Confirm").clicked() {
+            if self.confirm_mnemonic_string == self.mnemonic_string {
+                self.wallet_file_data
+                    .add_wallet_from_mnemonic(&self.mnemonic_string)
+                    .unwrap();
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::WalletCreated,
+                    title: "Wallet Created",
+                    message: None,
+                    line_edit: None,
+                    optional: false,
+                })
+            } else {
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
+                    title: "Incorrect Mnemonic",
+                    message: Some("Check your entry and type in the mnemonic again".into()),
+                    line_edit: None,
+                    optional: false,
+                })
+            }
         }
     }
+    pub fn render_create_password_panel(&mut self, ui: &mut Ui) {
+        ui.label("Type Password");
+        let password_entry =
+            egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
+        ui.add(password_entry);
+        ui.label("Type your password again");
+        let password_entry_confirmation =
+            egui::TextEdit::singleline(&mut self.password_entry_confirmation_string).password(true);
+        ui.add(password_entry_confirmation);
+        let mut password_strength = 0;
 
-    pub fn render_password_panel(&mut self, ui: &mut Ui) {
+        if let Ok(password_strength_estimate) = zxcvbn(&self.password_entry_string, &[]) {
+            password_strength = password_strength_estimate.score();
+        }
+
+        if self.password_entry_string != self.password_entry_confirmation_string {
+            ui.label("passwords not the same");
+        } else {
+            let password_strength_bar =
+                egui::widgets::ProgressBar::new(password_strength as f32 / 4.0);
+            ui.add(password_strength_bar);
+            let password_strength_string: &str;
+            match password_strength {
+                0 => password_strength_string = "Very Weak",
+                1 => password_strength_string = "Weak",
+                2 => password_strength_string = "So-so",
+                3 => password_strength_string = "Good",
+                4 => password_strength_string = "Great",
+                _ => password_strength_string = "NP-Badboy",
+            }
+            ui.label(password_strength_string);
+            if ui.button("Enter").clicked() {
+                self.wallet_file_data
+                    .add_password(self.password_entry_string.clone())
+                    .unwrap();
+            }
+        };
+    }
+
+    pub fn render_enter_password_panel(&mut self, ui: &mut Ui) {
         ui.set_enabled(true);
         let password_entry =
             egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
         ui.add(password_entry);
         if ui.button("Enter").clicked() {
+            if self.password_entry_string == self.wallet_file_data.password.clone().unwrap() {
+                self.password_needed = false;
+            }
             self.password_entry_string = String::new();
-            self.central_panel_state = CentralPanelState::WalletAvailable;
         }
     }
 
@@ -198,10 +274,11 @@ impl MyApp {
         _frame: &mut eframe::Frame,
     ) {
         egui::CentralPanel::default().show(ctx, |ui| match self.central_panel_state {
-            CentralPanelState::WalletFileNotAvailable => self.render_create_wallet_panel(ui),
+            CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(ui),
+            CentralPanelState::NoWalletsInWalletFile => self.render_create_wallet_panel(ui),
             CentralPanelState::WalletNotInitialised => {}
-            CentralPanelState::PasswordNeeded => self.render_password_panel(ui),
-            _ => match self.side_panel_state {
+            CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
+            CentralPanelState::WalletAvailable => match self.side_panel_state {
                 SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
                 SidePanelState::Sending => self.render_sending_panel(enabled, ui),
                 SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
