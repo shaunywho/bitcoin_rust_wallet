@@ -1,1 +1,0 @@
-{"password":"asd","wallets":[{"priv_key":"tprv8ZgxMBicQKsPd8s9a7kF7EbDSqeXiAiJ1a3DJ7Lc8gc1gxSSAuYyWCxpswLDzcFEvuVSE82pFPmXT3ysQXB3bi7fu1PrvGwp3AUeyQ6A6Up","wallet_name":"New Wallet Name"}]}

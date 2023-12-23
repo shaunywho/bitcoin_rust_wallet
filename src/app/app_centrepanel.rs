@@ -1,4 +1,4 @@
-use egui::{InnerResponse, Ui};
+use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
 use super::{
@@ -7,7 +7,7 @@ use super::{
 };
 
 use chrono::prelude::*;
-use chrono_tz::Tz;
+
 use zxcvbn::zxcvbn;
 
 impl MyApp {
