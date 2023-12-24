@@ -13,7 +13,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
-const PASSWORD_NEEDED_TIMEOUT_S: i64 = 3;
+const PASSWORD_NEEDED_TIMEOUT_S: i64 = 600;
 use chrono::{DateTime, Duration};
 
 use egui::InnerResponse;
