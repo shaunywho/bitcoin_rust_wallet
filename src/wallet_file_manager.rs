@@ -189,7 +189,7 @@ impl WalletFileData {
         if self.wallets.len() > 0 {
             self.selected_wallet = Some(self.get_first_wallet_xpriv_str());
         }
-
+        // self.test_addresses();
         Ok(())
     }
 
@@ -338,6 +338,22 @@ impl WalletFileData {
                 self.key = Some(mc);
                 return true;
             }
+        }
+    }
+
+    pub fn test_addresses(&mut self) {
+        let wallet = Arc::clone(&self.get_selected_wallet_element().wallet_obj);
+
+        for i in 0..10000 {
+            println!(
+                "{}",
+                wallet
+                    .lock()
+                    .unwrap()
+                    .get_address(AddressIndex::Peek(i))
+                    .unwrap()
+                    .to_string()
+            );
         }
     }
 }

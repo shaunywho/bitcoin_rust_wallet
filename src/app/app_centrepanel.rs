@@ -40,10 +40,12 @@ impl MyApp {
 
         ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
+                .column(Column::exact(100.0))
                 .column(Column::exact(400.0).resizable(false))
                 .column(Column::exact(200.0))
                 .column(Column::exact(200.0))
                 .header(20.0, |mut header| {
+                    header.col(|ui| {});
                     header.col(|ui| {
                         ui.heading("Txid");
                     });
@@ -59,6 +61,13 @@ impl MyApp {
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
                             body.row(30.0, |mut row| {
+                                row.col(|ui| {
+                                    if ui.button("📋").on_hover_text("Click to copy").clicked() {
+                                        ui.output_mut(|o| {
+                                            o.copied_text = transaction.txid.to_string()
+                                        });
+                                    }
+                                });
                                 row.col(|ui| {
                                     ui.label(format!("{}", transaction.txid));
                                 });
@@ -168,19 +177,6 @@ impl MyApp {
     }
 
     pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
-
-    // pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
-    //     if ui.button("Create Wallet").clicked() {
-    //         let new_mnemonic = generate_mnemonic_string().unwrap();
-    //         self.dialog_box = Some(DialogBox {
-    //             dialog_box_enum: DialogBoxEnum::NewMnemonic,
-    //             title: "New Wallet Mnemonic",
-    //             message: Some(new_mnemonic),
-    //             line_edit: None,
-    //             optional: false,
-    //         });
-    //     }
-    // }
 
     pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
         ui.heading("Write down the following mnemonic");
