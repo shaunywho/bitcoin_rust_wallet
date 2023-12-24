@@ -260,10 +260,14 @@ impl MyApp {
             egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
         ui.add(password_entry);
         if ui.button("Enter").clicked() {
-            if self.password_entry_string == self.wallet_file_data.password.clone().unwrap() {
-                self.password_needed = false;
+            if self
+                .wallet_file_data
+                .validate_password(&self.password_entry_string)
+            {
+                self.central_panel_state = CentralPanelState::PasswordEntered;
+            } else {
+                self.password_entry_string = String::new();
             }
-            self.password_entry_string = String::new();
         }
     }
 
@@ -278,6 +282,7 @@ impl MyApp {
             CentralPanelState::NoWalletsInWalletFile => self.render_create_wallet_panel(ui),
             CentralPanelState::WalletNotInitialised => {}
             CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
+            CentralPanelState::PasswordEntered => {}
             CentralPanelState::WalletAvailable => match self.side_panel_state {
                 SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
                 SidePanelState::Sending => self.render_sending_panel(enabled, ui),

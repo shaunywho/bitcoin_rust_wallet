@@ -10,7 +10,7 @@ use bdk::wallet::Wallet;
 use bdk::Balance;
 use bdk::SyncOptions;
 use bdk::TransactionDetails;
-use csv::ReaderBuilder;
+
 use serde_encrypt::serialize::impls::BincodeSerializer;
 use serde_encrypt::traits::SerdeEncryptSharedKey;
 use serde_encrypt::EncryptedMessage;
@@ -19,8 +19,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io;
-use std::io::BufRead;
+
 use std::io::Read;
 use std::io::Write;
 
@@ -35,9 +34,9 @@ use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
 use crate::bitcoin_wallet::make_transaction;
 
+use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use serde::{Deserialize, Serialize};
-use serde_encrypt::shared_key::SharedKey;
-
+// use serde_encrypt::shared_key::SharedKey;
 #[derive(Debug, Serialize, Deserialize)]
 struct Message {
     content: String,
@@ -190,8 +189,8 @@ impl WalletFileData {
     }
     pub fn initialise_from_wallet_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents).unwrap();
         let shared_key = SharedKey::new(self.password_as_32_bytes());
         let encrypted_json = EncryptedMessage::deserialize(contents.into())?;
         let json_wallet_file = JsonWalletFile::decrypt_owned(&encrypted_json, &shared_key).unwrap();
@@ -344,12 +343,51 @@ impl WalletFileData {
         let mut array_32_bytes = [0u8; 32];
         if slice.len() > 32 {
             array_32_bytes.copy_from_slice(&slice[..32]);
-        } else {
+        } else if slice.len() <= 32 && slice.len() > 0 {
             let length = array_32_bytes.len();
             array_32_bytes.copy_from_slice(&slice[..length]);
+        } else {
         }
         return array_32_bytes;
     }
+
+    pub fn validate_password(&mut self, password: &str) -> bool {
+        let mut file = self.get_file();
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents).unwrap();
+        let shared_key = SharedKey::new(password_as_32_bytes(password));
+        let encrypted_json = EncryptedMessage::deserialize(contents.into()).unwrap();
+        let open_result = JsonWalletFile::decrypt_owned(&encrypted_json, &shared_key);
+        match open_result {
+            Err(_) => return false,
+            Ok(_) => return true,
+        }
+    }
+}
+
+pub fn password_as_32_bytes(password: &str) -> [u8; 32] {
+    let slice = password.as_bytes();
+    let length = slice.len();
+    let mut array_32_bytes = [0u8; 32];
+
+    for i in 0..length.min(32) {
+        array_32_bytes[i] = slice[i];
+    }
+
+    array_32_bytes
+}
+
+pub fn encryption_test() {
+    let mc = new_magic_crypt!("magickey", 256);
+
+    let base64 = mc.encrypt_str_to_base64("http://magiclen.org");
+
+    assert_eq!("DS/2U8royDnJDiNY2ps3f6ZoTbpZo8ZtUGYLGEjwLDQ=", base64);
+
+    assert_eq!(
+        "http://magiclen.org",
+        mc.decrypt_base64_to_string(&base64).unwrap()
+    );
 }
 
 #[cfg(test)]

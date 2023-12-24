@@ -6,7 +6,7 @@ mod app_centrepanel;
 mod app_sidepanel;
 mod app_toppanel;
 
-use crate::wallet_file_manager::{SyncData, WalletFileData};
+use crate::wallet_file_manager::{encryption_test, SyncData, WalletFileData};
 
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
@@ -25,6 +25,7 @@ enum CentralPanelState {
     NoWalletsInWalletFile,
     WalletNotInitialised,
     PasswordNeeded,
+    PasswordEntered,
     WalletAvailable,
 }
 #[derive(PartialEq)]
@@ -69,7 +70,6 @@ pub struct MyApp {
     last_interaction_time: DateTime<chrono::Local>,
     mnemonic_string: String,
     confirm_mnemonic_string: String,
-    password_needed: bool,
 }
 
 impl MyApp {
@@ -156,7 +156,7 @@ impl MyApp {
         let last_interaction_time = chrono::offset::Local::now();
         let mnemonic_string = String::new();
         let confirm_mnemonic_string = String::new();
-        let password_needed = true;
+
         let slf = Self {
             central_panel_state,
             side_panel_state,
@@ -173,7 +173,6 @@ impl MyApp {
             last_interaction_time,
             mnemonic_string,
             confirm_mnemonic_string,
-            password_needed,
         };
 
         slf
@@ -182,6 +181,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        encryption_test();
         self.update_wallet_state();
 
         if let Some(_private_key) = &self.wallet_file_data.selected_wallet {
@@ -296,33 +296,51 @@ impl MyApp {
             }
             CentralPanelState::WalletFileNotAvailable => {
                 if self.wallet_file_data.does_file_exist() {
-                    self.wallet_file_data.initialise_from_wallet_file().unwrap();
-                    match (
-                        self.wallet_file_data.password.clone(),
-                        self.wallet_file_data.wallets.len(),
-                    ) {
-                        (None, 0) => {
-                            self.central_panel_state = CentralPanelState::WalletNotInitialised
-                        }
-                        (Some(_), 0) => {
-                            self.mnemonic_string = generate_mnemonic_string().unwrap();
-                            self.central_panel_state = CentralPanelState::NoWalletsInWalletFile
-                        }
-                        (_, _) => self.central_panel_state = CentralPanelState::WalletAvailable,
-                    }
+                    // self.wallet_file_data.initialise_from_wallet_file().unwrap();
+                    // match (
+                    //     self.wallet_file_data.password.clone(),
+                    //     self.wallet_file_data.wallets.len(),
+                    // ) {
+                    //     (None, 0) => {
+                    //         self.central_panel_state = CentralPanelState::WalletNotInitialised
+                    //     }
+                    //     (Some(_), 0) => {
+                    //         self.mnemonic_string = generate_mnemonic_string().unwrap();
+                    //         self.central_panel_state = CentralPanelState::NoWalletsInWalletFile
+                    //     }
+                    //     (_, _) => self.central_panel_state = CentralPanelState::WalletAvailable,
+                    // }
+
+                    self.central_panel_state = CentralPanelState::PasswordNeeded;
                 }
                 // self.central_panel_state = CentralPanelState::WalletNotInitialised;
             }
-            CentralPanelState::PasswordNeeded => {
-                if !self.password_needed {
-                    self.central_panel_state = CentralPanelState::WalletAvailable;
+            CentralPanelState::PasswordNeeded => {}
+
+            CentralPanelState::PasswordEntered => {
+                match (
+                    self.wallet_file_data.password.clone(),
+                    self.wallet_file_data.wallets.len(),
+                ) {
+                    (None, 0) => self.central_panel_state = CentralPanelState::WalletNotInitialised,
+                    (Some(_), 0) => {
+                        self.mnemonic_string = generate_mnemonic_string().unwrap();
+                        self.central_panel_state = CentralPanelState::NoWalletsInWalletFile
+                    }
+                    (_, _) => self.central_panel_state = CentralPanelState::WalletAvailable,
                 }
+                self.central_panel_state = CentralPanelState::WalletAvailable;
             }
+
             CentralPanelState::WalletAvailable => {
-                self.access_timeout();
-                if self.password_needed {
+                let current_time = chrono::offset::Local::now();
+
+                if (current_time - self.last_interaction_time)
+                    > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
+                {
                     self.central_panel_state = CentralPanelState::PasswordNeeded;
                 }
+                self.last_interaction_time = current_time;
             }
             _ => (),
         }
@@ -342,16 +360,6 @@ impl MyApp {
         self.render_sidepanel(enabled, ctx, _frame);
         self.render_toppanel(enabled, ctx, _frame);
         self.render_centrepanel(enabled, ctx, _frame);
-    }
-    pub fn access_timeout(&mut self) {
-        let current_time = chrono::offset::Local::now();
-
-        if (current_time - self.last_interaction_time)
-            > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
-        {
-            self.password_needed = true;
-        }
-        self.last_interaction_time = current_time;
     }
 }
 
