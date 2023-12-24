@@ -203,7 +203,8 @@ impl MyApp {
                     message: None,
                     line_edit: None,
                     optional: false,
-                })
+                });
+                self.change_state(CentralPanelState::WalletAvailable);
             } else {
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
@@ -248,7 +249,7 @@ impl MyApp {
             ui.label(password_strength_string);
             if ui.button("Enter").clicked() {
                 self.wallet_file_data
-                    .add_password(self.password_entry_string.clone())
+                    .create_passworded_file(self.password_entry_string.clone())
                     .unwrap();
             }
         };
@@ -264,7 +265,7 @@ impl MyApp {
                 .wallet_file_data
                 .validate_password(&self.password_entry_string)
             {
-                self.central_panel_state = CentralPanelState::PasswordEntered;
+                self.change_state(CentralPanelState::PasswordEntered);
             } else {
                 self.password_entry_string = String::new();
             }
