@@ -102,7 +102,9 @@ impl MyApp {
                                             .timestamp_opt(confirmation_time.timestamp as i64, 0)
                                             .unwrap();
 
-                                        confirmation_time_str = confirmation_time_local.to_string();
+                                        confirmation_time_str = confirmation_time_local
+                                            .format("%d/%m/%y %H:%M:%S")
+                                            .to_string();
                                     } else {
                                         confirmation_time_str = "Pending".to_string();
                                     }

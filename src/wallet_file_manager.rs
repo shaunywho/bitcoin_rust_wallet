@@ -277,7 +277,7 @@ impl WalletFileData {
         fs::write(&self.filename, encrypted_string)?;
         return Ok(());
     }
-
+    //  Below is fishy, probably want to redo it
     pub fn rename_wallet(
         &mut self,
         selected_priv_key: &str,
@@ -353,22 +353,6 @@ impl WalletFileData {
                 self.key = Some(mc);
                 return true;
             }
-        }
-    }
-
-    pub fn test_addresses(&mut self) {
-        let wallet = Arc::clone(&self.get_selected_wallet_element().wallet_obj);
-
-        for i in 0..10000 {
-            println!(
-                "{}",
-                wallet
-                    .lock()
-                    .unwrap()
-                    .get_address(AddressIndex::Peek(i))
-                    .unwrap()
-                    .to_string()
-            );
         }
     }
 }

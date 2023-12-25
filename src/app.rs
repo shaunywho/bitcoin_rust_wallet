@@ -58,7 +58,6 @@ pub struct MyApp {
     central_panel_state: CentralPanelState,
     side_panel_state: SidePanelState,
     wallet_file_data: WalletFileData,
-    // selected_wallet: Option<String>,
     sync_data_receiver: mpsc::Receiver<SyncData>,
     sync_data_sender: mpsc::Sender<SyncData>,
     active_threads: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
@@ -302,7 +301,6 @@ impl MyApp {
                 if self.wallet_file_data.does_file_exist() {
                     self.central_panel_state = CentralPanelState::WalletNotInitialised;
                 }
-                // self.central_panel_state = CentralPanelState::WalletNotInitialised;
             }
             CentralPanelState::PasswordNeeded => {}
 
