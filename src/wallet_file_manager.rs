@@ -34,18 +34,18 @@ use crate::bitcoin_wallet::make_transaction;
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonWalletFile {
     wallets: Vec<JsonWallet>,
     contacts: Vec<JsonContact>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonWallet {
     priv_key: String,
     wallet_name: String,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonContact {
     pub_key: String,
     wallet_name: String,
@@ -284,29 +284,28 @@ impl WalletFileData {
         new_wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = self.get_file();
-        let mut updated_records: Vec<String> = Vec::new();
+        let mut encrypted_contents = String::new();
+        file.read_to_string(&mut encrypted_contents)?;
+        let contents = self
+            .key
+            .clone()
+            .unwrap()
+            .decrypt_base64_to_string(&encrypted_contents)
+            .unwrap();
+        let mut json_wallet_file: JsonWalletFile = serde_json::from_str(&contents)?;
 
-        let mut found_record = false;
-        for (priv_key, wallet_element) in &self.wallets {
-            if selected_priv_key == priv_key {
-                updated_records.push(format!("{}, {}", priv_key, new_wallet_name));
-                found_record = true;
-            } else {
-                updated_records.push(format!("{}, {}", priv_key, wallet_element.wallet_name));
+        for wallet in &mut json_wallet_file.wallets {
+            if wallet.priv_key == selected_priv_key {
+                wallet.wallet_name = new_wallet_name.to_string();
+
+                break;
             }
         }
 
-        if !found_record {
-            return Err("Record not found".into());
-        }
+        let json_string = serde_json::to_string(&json_wallet_file)?;
 
-        file.set_len(0)?; // Clear the file
-
-        for record in updated_records {
-            if let Err(e) = writeln!(file, "{}", record) {
-                eprintln!("Couldn't write to file: {}", e);
-            }
-        }
+        let encrypted_string = self.key.clone().unwrap().encrypt_str_to_base64(json_string);
+        fs::write(&self.filename, encrypted_string)?;
 
         Ok(())
     }
