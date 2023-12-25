@@ -182,6 +182,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // bitcoin_test();
         encryption_test();
         self.update_wallet_state();
 

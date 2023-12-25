@@ -1,3 +1,4 @@
+use crate::bitcoin_wallet::extract_address_from_transaction;
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
@@ -40,9 +41,10 @@ impl MyApp {
 
         ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
-                .column(Column::exact(400.0).resizable(false))
-                .column(Column::exact(200.0))
-                .column(Column::exact(200.0))
+                .column(Column::exact(480.0).resizable(false))
+                .column(Column::exact(70.0))
+                .column(Column::exact(150.0))
+                .column(Column::exact(100.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Txid");
@@ -53,19 +55,33 @@ impl MyApp {
                     header.col(|ui| {
                         ui.heading("Date");
                     });
+                    header.col(|ui| {
+                        ui.heading("Destination");
+                    });
                 })
                 .body(|mut body| {
                     let wallet = self.wallet_file_data.get_selected_wallet_element();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
+                            let addresses = extract_address_from_transaction(
+                                &transaction.transaction.clone().unwrap(),
+                            );
+                            let transaction_total =
+                                transaction.received as i64 - transaction.sent as i64;
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
-                                    ui.label(format!("{}", transaction.txid));
+                                    ui.horizontal(|ui| {
+                                        if ui.button("📋").on_hover_text("Click to copy").clicked()
+                                        {
+                                            ui.output_mut(|o| {
+                                                o.copied_text = transaction.txid.to_string()
+                                            });
+                                        }
+                                        ui.label(format!("{}", transaction.txid));
+                                    });
                                 });
 
                                 row.col(|ui| {
-                                    let transaction_total =
-                                        transaction.received as i64 - transaction.sent as i64;
                                     let transaction_string = if transaction_total < 0 {
                                         format!(
                                             "{} (fee: {})",
@@ -86,14 +102,20 @@ impl MyApp {
                                             .timestamp_opt(confirmation_time.timestamp as i64, 0)
                                             .unwrap();
 
-                                        confirmation_time_str = format!(
-                                            "{:?} Confirmed",
-                                            confirmation_time_local.to_string()
-                                        );
+                                        confirmation_time_str = confirmation_time_local.to_string();
                                     } else {
                                         confirmation_time_str = "Pending".to_string();
                                     }
                                     ui.label(confirmation_time_str);
+                                });
+                                row.col(|ui| {
+                                    let destination_string: String;
+                                    if transaction_total < 0 {
+                                        destination_string = format!("To {}", addresses[0]);
+                                    } else {
+                                        destination_string = format!("From {}", addresses[1]);
+                                    }
+                                    ui.label(destination_string);
                                 });
                             });
                         }
@@ -168,19 +190,6 @@ impl MyApp {
     }
 
     pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
-
-    // pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
-    //     if ui.button("Create Wallet").clicked() {
-    //         let new_mnemonic = generate_mnemonic_string().unwrap();
-    //         self.dialog_box = Some(DialogBox {
-    //             dialog_box_enum: DialogBoxEnum::NewMnemonic,
-    //             title: "New Wallet Mnemonic",
-    //             message: Some(new_mnemonic),
-    //             line_edit: None,
-    //             optional: false,
-    //         });
-    //     }
-    // }
 
     pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
         ui.heading("Write down the following mnemonic");

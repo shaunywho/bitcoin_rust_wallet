@@ -107,6 +107,12 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:#?}", wallet.list_transactions(true).unwrap());
     println!("\n\n\n\n\n");
 
+    let transaction = wallet.list_transactions(true).unwrap()[0]
+        .transaction
+        .clone()
+        .unwrap();
+    println!("{:?}", transaction);
+
     println!("Generated Address: {}", address);
     let balance = wallet.get_balance()?;
     println!("Wallet balance in SAT: {}", balance);
@@ -145,6 +151,13 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
         txid = txid
     );
     Ok(())
+}
+pub fn extract_address_from_transaction(transaction: &Transaction) -> Vec<Address> {
+    transaction
+        .output
+        .iter()
+        .map(|output| Address::from_script(&output.script_pubkey, Network::Testnet).unwrap())
+        .collect()
 }
 
 #[cfg(test)]
