@@ -37,11 +37,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonWalletFile {
     wallets: Vec<JsonWallet>,
+    contacts: Vec<JsonContact>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonWallet {
     priv_key: String,
+    wallet_name: String,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JsonContact {
+    pub_key: String,
     wallet_name: String,
 }
 
@@ -54,6 +60,7 @@ pub struct SyncData {
 
 pub struct WalletFileData {
     pub wallets: HashMap<String, WalletElement>,
+    pub contacts: HashMap<String, String>,
     filename: String,
     blockchain: Arc<ElectrumBlockchain>,
     pub selected_wallet: Option<String>,
@@ -149,6 +156,7 @@ impl WalletFileData {
         let blockchain = ElectrumBlockchain::from(client);
         let wallet_data = Self {
             wallets: HashMap::new(),
+            contacts: HashMap::new(),
             filename: filename.to_string(),
             blockchain: Arc::new(blockchain),
             selected_wallet: None,
@@ -222,8 +230,15 @@ impl WalletFileData {
                 wallet_name: wallet_element.wallet_name.clone(),
             })
             .collect();
-
-        return Ok(JsonWalletFile { wallets });
+        let contacts = self
+            .contacts
+            .iter()
+            .map(|(pub_key, wallet_name)| JsonContact {
+                pub_key: pub_key.clone(),
+                wallet_name: wallet_name.clone(),
+            })
+            .collect();
+        return Ok(JsonWalletFile { wallets, contacts });
     }
 
     pub fn add_wallet(&mut self, xpriv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
