@@ -52,6 +52,7 @@ pub enum DialogBoxEnum {
     ChangeWalletName,
     ConfirmSend,
     InvalidTransaction,
+    AddContactWallet,
 }
 
 pub struct MyApp {
@@ -80,6 +81,7 @@ impl MyApp {
         match dialog_box.dialog_box_enum {
             DialogBoxEnum::WalletCreated => {}
             DialogBoxEnum::IncorrectMnemonic => {}
+            DialogBoxEnum::AddContactWallet => todo!(),
 
             DialogBoxEnum::ChangeWalletName => {
                 self.rename_wallet_string = line_edit.unwrap();

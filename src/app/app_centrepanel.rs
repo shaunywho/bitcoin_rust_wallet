@@ -41,7 +41,7 @@ impl MyApp {
 
         ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
-                .column(Column::exact(480.0).resizable(false))
+                .column(Column::exact(200.0).resizable(false))
                 .column(Column::exact(70.0))
                 .column(Column::exact(150.0))
                 .column(Column::exact(100.0))
@@ -71,13 +71,16 @@ impl MyApp {
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
+                                        let txid = transaction.txid.to_string();
                                         if ui.button("📋").on_hover_text("Click to copy").clicked()
                                         {
-                                            ui.output_mut(|o| {
-                                                o.copied_text = transaction.txid.to_string()
-                                            });
+                                            ui.output_mut(|o| o.copied_text = txid.clone());
                                         }
-                                        ui.label(format!("{}", transaction.txid));
+                                        let shortened_txid = txid.clone()[0..10].to_string()
+                                            + "..."
+                                            + &txid[txid.len() - 10..txid.len()];
+
+                                        ui.label(format!("{}", shortened_txid)).on_hover_text(txid)
                                     });
                                 });
 
@@ -112,12 +115,26 @@ impl MyApp {
                                 });
                                 row.col(|ui| {
                                     let destination_string: String;
+                                    let address: String;
                                     if transaction_total < 0 {
                                         destination_string = format!("To {}", addresses[0]);
+                                        address = addresses[0].to_string();
                                     } else {
                                         destination_string = format!("From {}", addresses[1]);
+                                        address = addresses[1].to_string()
                                     }
                                     ui.label(destination_string);
+                                    if ui.button("➕").clicked() {
+                                        self.dialog_box = Some(DialogBox {
+                                            dialog_box_enum: DialogBoxEnum::AddContactWallet,
+                                            title: "Add Wallet",
+                                            message: Some(
+                                                format!("Wallet name for {}", address).into(),
+                                            ),
+                                            line_edit: Some(self.rename_wallet_string.clone()),
+                                            optional: true,
+                                        });
+                                    }
                                 });
                             });
                         }
