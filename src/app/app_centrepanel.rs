@@ -44,7 +44,7 @@ impl MyApp {
                 .column(Column::exact(200.0).resizable(false))
                 .column(Column::exact(70.0))
                 .column(Column::exact(150.0))
-                .column(Column::exact(100.0))
+                .column(Column::exact(350.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Txid");
@@ -123,18 +123,20 @@ impl MyApp {
                                         destination_string = format!("From {}", addresses[1]);
                                         address = addresses[1].to_string()
                                     }
-                                    ui.label(destination_string);
-                                    if ui.button("➕").clicked() {
-                                        self.dialog_box = Some(DialogBox {
-                                            dialog_box_enum: DialogBoxEnum::AddContactWallet,
-                                            title: "Add Wallet",
-                                            message: Some(
-                                                format!("Wallet name for {}", address).into(),
-                                            ),
-                                            line_edit: Some(self.rename_wallet_string.clone()),
-                                            optional: true,
-                                        });
-                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label(destination_string);
+                                        if ui.button("➕").clicked() {
+                                            self.dialog_box = Some(DialogBox {
+                                                dialog_box_enum: DialogBoxEnum::AddContactWallet,
+                                                title: "Add Wallet",
+                                                message: Some(
+                                                    format!("Wallet name for {}", address).into(),
+                                                ),
+                                                line_edit: Some(self.rename_wallet_string.clone()),
+                                                optional: true,
+                                            });
+                                        }
+                                    });
                                 });
                             });
                         }

@@ -83,7 +83,7 @@ impl MyApp {
         match dialog_box.dialog_box_enum {
             DialogBoxEnum::WalletCreated => {}
             DialogBoxEnum::IncorrectMnemonic => {}
-            DialogBoxEnum::AddContactWallet => todo!(),
+            DialogBoxEnum::AddContactWallet => {}
 
             DialogBoxEnum::ChangeWalletName => {
                 self.rename_wallet_string = line_edit.unwrap();
@@ -182,7 +182,6 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // bitcoin_test();
         encryption_test();
         self.update_wallet_state();
 
@@ -191,7 +190,6 @@ impl eframe::App for MyApp {
         }
 
         self.render_window(ctx, _frame);
-        // bitcoin_test();
     }
 }
 
