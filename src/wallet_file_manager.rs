@@ -27,6 +27,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 
+use crate::bitcoin_wallet::extract_address_from_transaction;
 use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
 use crate::bitcoin_wallet::make_transaction;
@@ -141,7 +142,6 @@ impl WalletModel {
                 priv_key,
                 balance,
                 transactions,
-                // ... other fields you might want to include
             };
 
             sync_sender
@@ -205,12 +205,6 @@ impl WalletModel {
             .unwrap();
         self.json_wallet_data = serde_json::from_str(&contents)?;
 
-        // for wallet in json_wallet_file.wallets {
-        //     self.wallets.insert(
-        //         wallet.address.clone(),
-        //         WalletElement::new(&wallet.address, &wallet.wallet_name),
-        //     );
-        // }
         for wallet in self.json_wallet_data.wallets.iter() {
             let priv_key = wallet.priv_key.clone().unwrap();
             self.wallet_objs.insert(
@@ -221,7 +215,6 @@ impl WalletModel {
         if self.json_wallet_data.wallets.len() > 0 {
             self.selected_wallet = Some(self.get_first_wallet_xpriv_str());
         }
-        // self.test_addresses();
         Ok(())
     }
 
@@ -239,8 +232,6 @@ impl WalletModel {
             sorted_transactions: None,
         };
 
-        // let mut json_wallet_file = self.to_json_wallet_file()?;
-
         match priv_key {
             Some(_) => self.json_wallet_data.wallets.push(json_wallet),
             None => self.json_wallet_data.contacts.push(json_wallet),
@@ -252,30 +243,6 @@ impl WalletModel {
 
         Ok(())
     }
-
-    // fn to_json_wallet_file(&self) -> Result<JsonWalletData, Box<dyn std::error::Error>> {
-    //     let wallets = self
-    //         .wallets
-    //         .iter()
-    //         .map(|(address, wallet_element)| JsonWallet {
-    //             address: address.clone(),
-    //             wallet_name: wallet_element.wallet_name.clone(),
-    //             balance: None,
-    //             sorted_transactions: None,
-    //         })
-    //         .collect();
-    //     let contacts = self
-    //         .contacts
-    //         .iter()
-    //         .map(|(address, wallet_name)| JsonWallet {
-    //             address: address.clone(),
-    //             wallet_name: wallet_name.clone(),
-    //             balance: None,
-    //             sorted_transactions: None,
-    //         })
-    //         .collect();
-    //     return Ok(JsonWalletData { wallets, contacts });
-    // }
 
     pub fn add_wallet(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         if self
@@ -304,23 +271,23 @@ impl WalletModel {
         return Ok(());
     }
 
-    // pub fn add_contact(
-    //     &mut self,
-    //     pub_key: &str,
-    //     wallet_name: &str,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
-    //     if self
-    //         .json_wallet_data
-    //         .contacts
-    //         .iter()
-    //         .any(|wallet| wallet.pub_key == pub_key)
-    //     {
-    //         panic!("Wallet already exists");
-    //     }
-    //     self.append_to_file(None, pub_key, wallet_name);
+    pub fn add_contact(
+        &mut self,
+        pub_key: &str,
+        wallet_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self
+            .json_wallet_data
+            .contacts
+            .iter()
+            .any(|wallet| wallet.pub_key == pub_key)
+        {
+            return Ok(());
+        }
+        self.append_to_file(None, pub_key, wallet_name);
 
-    //     return Ok(());
-    // }
+        return Ok(());
+    }
 
     pub fn add_wallet_from_mnemonic(
         &mut self,
@@ -364,7 +331,21 @@ impl WalletModel {
         balance: Option<Balance>,
         transactions: Option<Vec<TransactionDetails>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_wallet_data(EntryType::Wallet, address, None, balance, transactions)?;
+        self.set_wallet_data(
+            EntryType::Wallet,
+            address,
+            None,
+            balance,
+            transactions.clone(),
+        )?;
+        for transaction in transactions.clone().unwrap() {
+            let addresses =
+                extract_address_from_transaction(&transaction.transaction.clone().unwrap());
+            let transaction_total = transaction.received as i64 - transaction.sent as i64;
+            let address_index = if transaction_total < 0 { 0 } else { 1 };
+            let address = addresses[address_index].to_string();
+            let _ = self.add_contact(&address, &address);
+        }
         return Ok(());
     }
 
@@ -376,13 +357,6 @@ impl WalletModel {
             .to_string();
         return first_wallet;
     }
-
-    // pub fn get_wallet_element(&mut self, xpriv_str: &str) -> &mut WalletElement {
-    //     // Using entry() to ensure the key exists and get a mutable reference
-    //     self.wallets
-    //         .entry(xpriv_str.to_string())
-    //         .or_insert_with(|| WalletElement::new("", "")) // Create a new WalletElement if key doesn't exist
-    // }
 
     pub fn get_selected_wallet_string(&self) -> String {
         return self.selected_wallet.clone().unwrap();
