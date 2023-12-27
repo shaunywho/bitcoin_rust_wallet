@@ -44,10 +44,11 @@ pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
     return Ok(xprv);
 }
 
-pub fn generate_wallet(xprv: ExtendedPrivKey) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
+pub fn generate_wallet(priv_key: &str) -> Result<Wallet<MemoryDatabase>, anyhow::Error> {
+    let xpriv = ExtendedPrivKey::from_str(priv_key).unwrap();
     let wallet = Wallet::new(
-        Bip84(xprv.clone(), KeychainKind::External),
-        Some(Bip84(xprv, KeychainKind::Internal)),
+        Bip84(xpriv.clone(), KeychainKind::External),
+        Some(Bip84(xpriv, KeychainKind::Internal)),
         Network::Testnet,
         MemoryDatabase::new(),
     )?;
@@ -87,7 +88,6 @@ pub fn make_transaction(
     let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
     return psbt.extract_tx();
 }
-
 pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     let external_descriptor = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/0'/0'/0/*)";
     let internal_descriptor = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/0'/0'/1/*)";

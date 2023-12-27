@@ -15,7 +15,7 @@ impl MyApp {
     pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_file_data.get_selected_wallet_element();
+            let wallet = self.wallet_model.get_selected_wallet_data();
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
@@ -29,10 +29,10 @@ impl MyApp {
                 });
             }
         });
-        let wallet = self.wallet_file_data.get_selected_wallet_element();
+        let wallet = self.wallet_model.get_selected_wallet_data();
         ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
-        let public_key = &wallet.address;
+        let public_key = &wallet.pub_key;
 
         ui.label(format!("Public Key: {:?}", &public_key));
         if ui.button("Copy").clicked() {
@@ -41,10 +41,10 @@ impl MyApp {
 
         ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
-                .column(Column::exact(480.0).resizable(false))
+                .column(Column::exact(200.0).resizable(false))
                 .column(Column::exact(70.0))
                 .column(Column::exact(150.0))
-                .column(Column::exact(100.0))
+                .column(Column::exact(350.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Txid");
@@ -60,7 +60,7 @@ impl MyApp {
                     });
                 })
                 .body(|mut body| {
-                    let wallet = self.wallet_file_data.get_selected_wallet_element();
+                    let wallet = self.wallet_model.get_selected_wallet_data();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
                             let addresses = extract_address_from_transaction(
@@ -71,13 +71,16 @@ impl MyApp {
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
+                                        let txid = transaction.txid.to_string();
                                         if ui.button("📋").on_hover_text("Click to copy").clicked()
                                         {
-                                            ui.output_mut(|o| {
-                                                o.copied_text = transaction.txid.to_string()
-                                            });
+                                            ui.output_mut(|o| o.copied_text = txid.clone());
                                         }
-                                        ui.label(format!("{}", transaction.txid));
+                                        let shortened_txid = txid.clone()[0..10].to_string()
+                                            + "..."
+                                            + &txid[txid.len() - 10..txid.len()];
+
+                                        ui.label(format!("{}", shortened_txid)).on_hover_text(txid)
                                     });
                                 });
 
@@ -102,7 +105,9 @@ impl MyApp {
                                             .timestamp_opt(confirmation_time.timestamp as i64, 0)
                                             .unwrap();
 
-                                        confirmation_time_str = confirmation_time_local.to_string();
+                                        confirmation_time_str = confirmation_time_local
+                                            .format("%d/%m/%y %H:%M:%S")
+                                            .to_string();
                                     } else {
                                         confirmation_time_str = "Pending".to_string();
                                     }
@@ -110,12 +115,31 @@ impl MyApp {
                                 });
                                 row.col(|ui| {
                                     let destination_string: String;
+                                    let address: String;
                                     if transaction_total < 0 {
                                         destination_string = format!("To {}", addresses[0]);
+                                        address = addresses[0].to_string();
                                     } else {
                                         destination_string = format!("From {}", addresses[1]);
+                                        address = addresses[1].to_string()
                                     }
-                                    ui.label(destination_string);
+                                    ui.horizontal(|ui| {
+                                        ui.label(destination_string);
+                                        if ui.button("➕").clicked() {
+                                            let wallet_name = String::new();
+                                            self.dialog_box = Some(DialogBox {
+                                                dialog_box_enum: DialogBoxEnum::AddContactWallet {
+                                                    pub_key: address.clone(),
+                                                },
+                                                title: "Add Wallet",
+                                                message: Some(
+                                                    format!("Wallet name for {}", address).into(),
+                                                ),
+                                                line_edit: Some(wallet_name),
+                                                optional: true,
+                                            });
+                                        }
+                                    });
                                 });
                             });
                         }
@@ -127,9 +151,7 @@ impl MyApp {
         ui.set_enabled(enabled);
         ui.heading(format!(
             "Wallet Balance: {:?}",
-            self.wallet_file_data
-                .get_selected_wallet_element()
-                .get_total()
+            self.wallet_model.get_selected_wallet_data().get_total()
         ));
         ui.add_space(50.0);
         ui.vertical_centered(|ui| {
@@ -175,14 +197,14 @@ impl MyApp {
 
     pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
-        let wallet = self.wallet_file_data.get_selected_wallet_element();
-        let address = &wallet.address;
-        ui.label(format!("Public Key: {:?}", address));
+        let wallet = self.wallet_model.get_selected_wallet_data();
+        let public_key = &wallet.pub_key;
+        ui.label(format!("Public Key: {:?}", public_key));
         // Encode some data into bits.
 
         let img = ui.ctx().load_texture(
             "my-image",
-            generate_qrcode_from_address(&address).unwrap(),
+            generate_qrcode_from_address(&public_key).unwrap(),
             Default::default(),
         );
 
@@ -191,20 +213,20 @@ impl MyApp {
 
     pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
 
-    pub fn render_create_wallet_panel(&mut self, ui: &mut Ui) {
+    pub fn render_create_wallet_panel(&mut self, ui: &mut Ui, mnemonic_string: &str) {
         ui.heading("Write down the following mnemonic");
         ui.horizontal(|ui| {
-            ui.label(&self.mnemonic_string);
+            ui.label(mnemonic_string);
             if ui.button("Copy Mnemonic").clicked() {
-                ui.output_mut(|o| o.copied_text = self.mnemonic_string.clone());
+                ui.output_mut(|o| o.copied_text = mnemonic_string.to_string());
             }
         });
         ui.label("Type and confirm the mnemonic above");
         ui.text_edit_singleline(&mut self.confirm_mnemonic_string);
         if ui.button("Confirm").clicked() {
-            if self.confirm_mnemonic_string == self.mnemonic_string {
-                self.wallet_file_data
-                    .add_wallet_from_mnemonic(&self.mnemonic_string)
+            if self.confirm_mnemonic_string == mnemonic_string {
+                self.wallet_model
+                    .add_wallet_from_mnemonic(&mnemonic_string)
                     .unwrap();
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::WalletCreated,
@@ -213,7 +235,9 @@ impl MyApp {
                     line_edit: None,
                     optional: false,
                 });
-                self.change_state(CentralPanelState::WalletAvailable);
+                self.central_panel_state = CentralPanelState::WalletAvailable {
+                    last_interaction_time: chrono::offset::Local::now(),
+                };
             } else {
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
@@ -257,7 +281,7 @@ impl MyApp {
             }
             ui.label(password_strength_string);
             if ui.button("Enter").clicked() {
-                self.wallet_file_data
+                self.wallet_model
                     .create_passworded_file(self.password_entry_string.clone())
                     .unwrap();
             }
@@ -271,10 +295,10 @@ impl MyApp {
         ui.add(password_entry);
         if ui.button("Enter").clicked() {
             if self
-                .wallet_file_data
+                .wallet_model
                 .validate_password(&self.password_entry_string)
             {
-                self.change_state(CentralPanelState::PasswordEntered);
+                self.central_panel_state = CentralPanelState::WalletNotInitialised;
             } else {
                 self.password_entry_string = String::new();
             }
@@ -287,13 +311,17 @@ impl MyApp {
         ctx: &egui::Context,
         _frame: &mut eframe::Frame,
     ) {
-        egui::CentralPanel::default().show(ctx, |ui| match self.central_panel_state {
+        egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
             CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(ui),
-            CentralPanelState::NoWalletsInWalletFile => self.render_create_wallet_panel(ui),
+            CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => {
+                let mnemonic_string = mnemonic_string.clone();
+                self.render_create_wallet_panel(ui, &mnemonic_string);
+            }
             CentralPanelState::WalletNotInitialised => {}
             CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
-            CentralPanelState::PasswordEntered => {}
-            CentralPanelState::WalletAvailable => match self.side_panel_state {
+            CentralPanelState::WalletAvailable {
+                last_interaction_time,
+            } => match self.side_panel_state {
                 SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
                 SidePanelState::Sending => self.render_sending_panel(enabled, ui),
                 SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
