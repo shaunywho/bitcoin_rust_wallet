@@ -37,18 +37,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonWalletFile {
     wallets: Vec<JsonWallet>,
-    contacts: Vec<JsonContact>,
+    contacts: Vec<JsonWallet>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonWallet {
-    priv_key: String,
+    address: String,
     wallet_name: String,
 }
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct JsonContact {
-    pub_key: String,
-    wallet_name: String,
+enum EntryType {
+    Wallet,
+    Contact,
 }
 
 const FILENAME: &str = "./wallet.txt";
@@ -190,8 +189,8 @@ impl WalletFileData {
 
         for wallet in json_wallet_file.wallets {
             self.wallets.insert(
-                wallet.priv_key.clone(),
-                WalletElement::new(&wallet.priv_key, &wallet.wallet_name),
+                wallet.address.clone(),
+                WalletElement::new(&wallet.address, &wallet.wallet_name),
             );
         }
         if self.wallets.len() > 0 {
@@ -201,57 +200,62 @@ impl WalletFileData {
         Ok(())
     }
 
-    fn append_to_wallet_file(
+    fn append_to_file(
         &mut self,
-        priv_key: &str,
+        entry_type: EntryType,
+        address: &str,
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let json_wallet = JsonWallet {
-            priv_key: priv_key.to_string(),
+            address: address.to_string(),
             wallet_name: wallet_name.to_string(),
         };
+
         let mut json_wallet_file = self.to_json_wallet_file()?;
-        json_wallet_file.wallets.push(json_wallet);
+
+        match entry_type {
+            EntryType::Wallet => json_wallet_file.wallets.push(json_wallet),
+            EntryType::Contact => json_wallet_file.contacts.push(json_wallet),
+        }
 
         let json_string = serde_json::to_string(&json_wallet_file)?;
-
         let encrypted_string = self.key.clone().unwrap().encrypt_str_to_base64(json_string);
         fs::write(&self.filename, encrypted_string)?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn to_json_wallet_file(&self) -> Result<JsonWalletFile, Box<dyn std::error::Error>> {
         let wallets = self
             .wallets
             .iter()
-            .map(|(priv_key, wallet_element)| JsonWallet {
-                priv_key: priv_key.clone(),
+            .map(|(address, wallet_element)| JsonWallet {
+                address: address.clone(),
                 wallet_name: wallet_element.wallet_name.clone(),
             })
             .collect();
         let contacts = self
             .contacts
             .iter()
-            .map(|(pub_key, wallet_name)| JsonContact {
-                pub_key: pub_key.clone(),
+            .map(|(address, wallet_name)| JsonWallet {
+                address: address.clone(),
                 wallet_name: wallet_name.clone(),
             })
             .collect();
         return Ok(JsonWalletFile { wallets, contacts });
     }
 
-    pub fn add_wallet(&mut self, priv_key: String) -> Result<(), Box<dyn std::error::Error>> {
-        if self.wallets.contains_key(&priv_key) {
+    pub fn add_wallet(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if self.wallets.contains_key(priv_key) {
             panic!("Wallet already exists");
         } else {
             let wallet_name = "New Wallet Name";
-            self.append_to_wallet_file(&priv_key, wallet_name)?;
+            self.append_to_file(EntryType::Wallet, priv_key, wallet_name)?;
             self.wallets.insert(
-                priv_key.clone(),
-                WalletElement::new(&priv_key, &wallet_name),
+                priv_key.to_string(),
+                WalletElement::new(priv_key, wallet_name),
             );
-            self.selected_wallet = Some(priv_key.clone());
+            self.selected_wallet = Some(priv_key.to_string());
         }
 
         return Ok(());
@@ -265,6 +269,7 @@ impl WalletFileData {
         if self.contacts.contains_key(pub_key) {
             panic!("Wallet already exists");
         }
+        self.append_to_file(EntryType::Contact, pub_key, wallet_name);
         self.contacts
             .insert(pub_key.to_string(), wallet_name.to_string());
         return Ok(());
@@ -276,7 +281,7 @@ impl WalletFileData {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let xpriv = generate_xpriv(mnemonic).unwrap().to_string();
 
-        return self.add_wallet(xpriv);
+        return self.add_wallet(&xpriv);
     }
 
     pub fn create_passworded_file(
@@ -308,7 +313,7 @@ impl WalletFileData {
         let mut json_wallet_file: JsonWalletFile = serde_json::from_str(&contents)?;
 
         for wallet in &mut json_wallet_file.wallets {
-            if wallet.priv_key == selected_priv_key {
+            if wallet.address == selected_priv_key {
                 wallet.wallet_name = new_wallet_name.to_string();
 
                 break;
@@ -358,7 +363,6 @@ impl WalletFileData {
         file.read_to_end(&mut encrypted_contents).unwrap();
         let encrypted_string = String::from_utf8(encrypted_contents).unwrap();
         let contents = mc.decrypt_base64_to_string(encrypted_string);
-        // let open_result = serde_json::from_str(&contents).unwrap();
         match contents {
             Err(_) => return false,
             Ok(_) => {
