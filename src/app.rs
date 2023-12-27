@@ -6,7 +6,7 @@ mod app_centrepanel;
 mod app_sidepanel;
 mod app_toppanel;
 
-use crate::wallet_file_manager::{encryption_test, SyncData, WalletModel};
+use crate::wallet_file_manager::{encryption_test, EntryType, SyncData, WalletModel};
 
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
@@ -90,13 +90,12 @@ impl MyApp {
             DialogBoxEnum::ChangeWalletName => {
                 let new_wallet_name = line_edit.unwrap();
 
-                let selected_wallet_string = self.wallet_model.get_selected_wallet_string();
-                let wallets = &mut self.wallet_model.json_wallet_data.wallets;
-                wallets.iter_mut().map(|wallet| {
-                    if wallet.address == selected_wallet_string {
-                        wallet.wallet_name = new_wallet_name.clone()
-                    }
-                });
+                let selected_priv_key = self.wallet_model.get_selected_wallet_string();
+                let _ = self.wallet_model.rename_wallet(
+                    EntryType::Wallet,
+                    &selected_priv_key,
+                    &new_wallet_name,
+                );
             }
             DialogBoxEnum::ConfirmSend { .. } => {
                 let recipient_addr = self.recipient_address_string.clone();
@@ -234,19 +233,22 @@ impl MyApp {
 
         let sync_data_channel_clone = self.sync_data_sender.clone();
 
-        while let Ok(sync_data) = self.sync_data_receiver.try_recv() {
-            let mut wallet = self.wallet_model.get_selected_wallet_data();
-            wallet.balance = Some(sync_data.balance);
-            let mut transactions = sync_data.transactions;
-            transactions.sort_by(|a, b| match (&a.confirmation_time, &b.confirmation_time) {
-                (Some(a), Some(b)) => b.cmp(&a),
+        while let Ok(mut sync_data) = self.sync_data_receiver.try_recv() {
+            sync_data.transactions.sort_by(|a, b| {
+                match (&a.confirmation_time, &b.confirmation_time) {
+                    (Some(a), Some(b)) => b.cmp(&a),
 
-                (Some(_), None) => std::cmp::Ordering::Greater,
-                (None, Some(_)) => std::cmp::Ordering::Less,
+                    (Some(_), None) => std::cmp::Ordering::Greater,
+                    (None, Some(_)) => std::cmp::Ordering::Less,
 
-                (None, None) => std::cmp::Ordering::Equal,
+                    (None, None) => std::cmp::Ordering::Equal,
+                }
             });
-            wallet.sorted_transactions = Some(transactions);
+            let _ = self.wallet_model.sync_wallet(
+                &sync_data.priv_key,
+                Some(sync_data.balance),
+                Some(sync_data.transactions),
+            );
         }
         self.active_threads
             .lock()

@@ -32,7 +32,7 @@ impl MyApp {
         let wallet = self.wallet_model.get_selected_wallet_data();
         ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
-        let public_key = &wallet.address;
+        let public_key = &wallet.pub_key;
 
         ui.label(format!("Public Key: {:?}", &public_key));
         if ui.button("Copy").clicked() {
@@ -198,13 +198,13 @@ impl MyApp {
     pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
         let wallet = self.wallet_model.get_selected_wallet_data();
-        let address = &wallet.address;
-        ui.label(format!("Public Key: {:?}", address));
+        let public_key = &wallet.pub_key;
+        ui.label(format!("Public Key: {:?}", public_key));
         // Encode some data into bits.
 
         let img = ui.ctx().load_texture(
             "my-image",
-            generate_qrcode_from_address(&address).unwrap(),
+            generate_qrcode_from_address(&public_key).unwrap(),
             Default::default(),
         );
 
