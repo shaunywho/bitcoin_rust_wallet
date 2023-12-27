@@ -84,7 +84,8 @@ impl MyApp {
             DialogBoxEnum::IncorrectMnemonic => {}
             DialogBoxEnum::AddContactWallet { pub_key } => {
                 let wallet_name = line_edit.unwrap();
-                self.wallet_model.add_contact(pub_key, &wallet_name);
+                self.wallet_model
+                    .rename_wallet(EntryType::Contact, pub_key, &wallet_name);
             }
 
             DialogBoxEnum::ChangeWalletName => {

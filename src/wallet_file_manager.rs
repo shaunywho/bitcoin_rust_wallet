@@ -304,23 +304,23 @@ impl WalletModel {
         return Ok(());
     }
 
-    pub fn add_contact(
-        &mut self,
-        pub_key: &str,
-        wallet_name: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if self
-            .json_wallet_data
-            .contacts
-            .iter()
-            .any(|wallet| wallet.pub_key == pub_key)
-        {
-            panic!("Wallet already exists");
-        }
-        self.append_to_file(None, pub_key, wallet_name);
+    // pub fn add_contact(
+    //     &mut self,
+    //     pub_key: &str,
+    //     wallet_name: &str,
+    // ) -> Result<(), Box<dyn std::error::Error>> {
+    //     if self
+    //         .json_wallet_data
+    //         .contacts
+    //         .iter()
+    //         .any(|wallet| wallet.pub_key == pub_key)
+    //     {
+    //         panic!("Wallet already exists");
+    //     }
+    //     self.append_to_file(None, pub_key, wallet_name);
 
-        return Ok(());
-    }
+    //     return Ok(());
+    // }
 
     pub fn add_wallet_from_mnemonic(
         &mut self,
