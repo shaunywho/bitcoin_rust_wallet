@@ -15,7 +15,7 @@ impl MyApp {
     pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_file_data.get_selected_wallet_element();
+            let wallet = self.wallet_model.get_selected_wallet_data();
             ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
             // let wallet_name = self
             if ui.button("Rename Wallet").clicked() {
@@ -29,7 +29,7 @@ impl MyApp {
                 });
             }
         });
-        let wallet = self.wallet_file_data.get_selected_wallet_element();
+        let wallet = self.wallet_model.get_selected_wallet_data();
         ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
         ui.add_space(50.0);
         let public_key = &wallet.address;
@@ -60,7 +60,7 @@ impl MyApp {
                     });
                 })
                 .body(|mut body| {
-                    let wallet = self.wallet_file_data.get_selected_wallet_element();
+                    let wallet = self.wallet_model.get_selected_wallet_data();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction in transactions.iter() {
                             let addresses = extract_address_from_transaction(
@@ -151,9 +151,7 @@ impl MyApp {
         ui.set_enabled(enabled);
         ui.heading(format!(
             "Wallet Balance: {:?}",
-            self.wallet_file_data
-                .get_selected_wallet_element()
-                .get_total()
+            self.wallet_model.get_selected_wallet_data().get_total()
         ));
         ui.add_space(50.0);
         ui.vertical_centered(|ui| {
@@ -199,7 +197,7 @@ impl MyApp {
 
     pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
         ui.set_enabled(enabled);
-        let wallet = self.wallet_file_data.get_selected_wallet_element();
+        let wallet = self.wallet_model.get_selected_wallet_data();
         let address = &wallet.address;
         ui.label(format!("Public Key: {:?}", address));
         // Encode some data into bits.
@@ -227,7 +225,7 @@ impl MyApp {
         ui.text_edit_singleline(&mut self.confirm_mnemonic_string);
         if ui.button("Confirm").clicked() {
             if self.confirm_mnemonic_string == mnemonic_string {
-                self.wallet_file_data
+                self.wallet_model
                     .add_wallet_from_mnemonic(&mnemonic_string)
                     .unwrap();
                 self.dialog_box = Some(DialogBox {
@@ -283,7 +281,7 @@ impl MyApp {
             }
             ui.label(password_strength_string);
             if ui.button("Enter").clicked() {
-                self.wallet_file_data
+                self.wallet_model
                     .create_passworded_file(self.password_entry_string.clone())
                     .unwrap();
             }
@@ -297,7 +295,7 @@ impl MyApp {
         ui.add(password_entry);
         if ui.button("Enter").clicked() {
             if self
-                .wallet_file_data
+                .wallet_model
                 .validate_password(&self.password_entry_string)
             {
                 self.central_panel_state = CentralPanelState::WalletNotInitialised;
