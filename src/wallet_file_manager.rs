@@ -241,8 +241,7 @@ impl WalletFileData {
         return Ok(JsonWalletFile { wallets, contacts });
     }
 
-    pub fn add_wallet(&mut self, xpriv: ExtendedPrivKey) -> Result<(), Box<dyn std::error::Error>> {
-        let priv_key = xpriv.to_string();
+    pub fn add_wallet(&mut self, priv_key: String) -> Result<(), Box<dyn std::error::Error>> {
         if self.wallets.contains_key(&priv_key) {
             panic!("Wallet already exists");
         } else {
@@ -258,11 +257,25 @@ impl WalletFileData {
         return Ok(());
     }
 
+    pub fn add_contact(
+        &mut self,
+        pub_key: &str,
+        wallet_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.contacts.contains_key(pub_key) {
+            panic!("Wallet already exists");
+        }
+        self.contacts
+            .insert(pub_key.to_string(), wallet_name.to_string());
+        return Ok(());
+    }
+
     pub fn add_wallet_from_mnemonic(
         &mut self,
         mnemonic: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let xpriv = generate_xpriv(mnemonic).unwrap();
+        let xpriv = generate_xpriv(mnemonic).unwrap().to_string();
+
         return self.add_wallet(xpriv);
     }
 

@@ -126,13 +126,16 @@ impl MyApp {
                                     ui.horizontal(|ui| {
                                         ui.label(destination_string);
                                         if ui.button("➕").clicked() {
+                                            let wallet_name = String::new();
                                             self.dialog_box = Some(DialogBox {
-                                                dialog_box_enum: DialogBoxEnum::AddContactWallet,
+                                                dialog_box_enum: DialogBoxEnum::AddContactWallet {
+                                                    pub_key: address.clone(),
+                                                },
                                                 title: "Add Wallet",
                                                 message: Some(
                                                     format!("Wallet name for {}", address).into(),
                                                 ),
-                                                line_edit: Some(self.rename_wallet_string.clone()),
+                                                line_edit: Some(wallet_name),
                                                 optional: true,
                                             });
                                         }

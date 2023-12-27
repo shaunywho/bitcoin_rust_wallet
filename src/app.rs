@@ -56,7 +56,7 @@ pub enum DialogBoxEnum {
     ChangeWalletName,
     ConfirmSend,
     InvalidTransaction,
-    AddContactWallet,
+    AddContactWallet { pub_key: String },
 }
 
 pub struct MyApp {
@@ -80,23 +80,26 @@ impl MyApp {
         let Some(dialog_box) = &self.dialog_box else {
             return;
         };
-        match dialog_box.dialog_box_enum {
+        match &dialog_box.dialog_box_enum {
             DialogBoxEnum::WalletCreated => {}
             DialogBoxEnum::IncorrectMnemonic => {}
-            DialogBoxEnum::AddContactWallet => {}
+            DialogBoxEnum::AddContactWallet { pub_key } => {
+                let wallet_name = line_edit.unwrap();
+                self.wallet_file_data.add_contact(pub_key, &wallet_name);
+            }
 
             DialogBoxEnum::ChangeWalletName => {
-                self.rename_wallet_string = line_edit.unwrap();
+                let new_wallet_name = line_edit.unwrap();
 
                 self.wallet_file_data
                     .wallets
                     .get_mut(&self.wallet_file_data.get_selected_wallet_string())
                     .unwrap()
-                    .wallet_name = self.rename_wallet_string.clone();
+                    .wallet_name = new_wallet_name.clone();
                 self.wallet_file_data
                     .rename_wallet(
                         &self.wallet_file_data.get_selected_wallet_string(),
-                        &self.rename_wallet_string,
+                        &new_wallet_name,
                     )
                     .unwrap();
             }
