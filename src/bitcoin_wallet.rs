@@ -4,7 +4,7 @@ use bdk::bitcoin::bip32::ExtendedPrivKey;
 use bdk::bitcoin::Transaction;
 
 use bdk::template::Bip84;
-use bdk::{self, KeychainKind};
+use bdk::{self, BlockTime, KeychainKind, TransactionDetails};
 use bdk::{
     bitcoin::Address,
     bitcoin::Network,
@@ -19,6 +19,16 @@ use bdk::{
     wallet::{AddressIndex, Wallet},
     SignOptions, SyncOptions,
 };
+
+type TransactionTotal = i64;
+type Fee = u64;
+type TransactionAddress = String;
+type TransactionId = String;
+type ConfirmationTime = BlockTime;
+pub enum TransactionDirection {
+    To,
+    From,
+}
 
 use std::str::FromStr;
 
@@ -158,6 +168,39 @@ pub fn extract_address_from_transaction(transaction: &Transaction) -> Vec<Addres
         .iter()
         .map(|output| Address::from_script(&output.script_pubkey, Network::Testnet).unwrap())
         .collect()
+}
+
+pub fn get_transaction_details(
+    transaction_details: TransactionDetails,
+) -> (
+    TransactionDirection,
+    TransactionAddress,
+    TransactionId,
+    TransactionTotal,
+    Fee,
+    Option<ConfirmationTime>,
+) {
+    let transaction_total = transaction_details.received as i64 - transaction_details.sent as i64;
+    let transaction = transaction_details.transaction.unwrap();
+    let transaction_id = transaction_details.txid.to_string();
+    let addresses = extract_address_from_transaction(&transaction.clone());
+    let address_index = if transaction_total < 0 { 0 } else { 1 };
+    let transaction_address = addresses[address_index].to_string();
+    let fee = transaction_details.fee.unwrap();
+    let confirmation_time = transaction_details.confirmation_time;
+    let transaction_direction = if transaction_total < 0 {
+        TransactionDirection::To
+    } else {
+        TransactionDirection::From
+    };
+    return (
+        transaction_direction,
+        transaction_address,
+        transaction_id,
+        transaction_total,
+        fee,
+        confirmation_time,
+    );
 }
 
 #[cfg(test)]

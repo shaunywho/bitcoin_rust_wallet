@@ -1,4 +1,6 @@
-use crate::bitcoin_wallet::extract_address_from_transaction;
+use crate::bitcoin_wallet::{
+    extract_address_from_transaction, get_transaction_details, TransactionDirection,
+};
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
@@ -62,16 +64,18 @@ impl MyApp {
                 .body(|mut body| {
                     let wallet = self.wallet_model.get_selected_wallet_data();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
-                        for transaction in transactions.iter() {
-                            let addresses = extract_address_from_transaction(
-                                &transaction.transaction.clone().unwrap(),
-                            );
-                            let transaction_total =
-                                transaction.received as i64 - transaction.sent as i64;
+                        for transaction_details in transactions.iter() {
+                            let (
+                                transaction_direction,
+                                address,
+                                txid,
+                                transaction_total,
+                                fee,
+                                confirmation_time,
+                            ) = get_transaction_details(transaction_details.clone());
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
-                                        let txid = transaction.txid.to_string();
                                         if ui.button("📋").on_hover_text("Click to copy").clicked()
                                         {
                                             ui.output_mut(|o| o.copied_text = txid.clone());
@@ -85,44 +89,41 @@ impl MyApp {
                                 });
 
                                 row.col(|ui| {
-                                    let transaction_string = if transaction_total < 0 {
-                                        format!(
-                                            "{} (fee: {})",
-                                            transaction_total,
-                                            transaction.fee.unwrap()
-                                        )
-                                    } else {
-                                        format!("+{}", transaction_total)
+                                    let transaction_string = match transaction_direction {
+                                        TransactionDirection::To => {
+                                            format!("{} (fee: {})", transaction_total, fee)
+                                        }
+                                        TransactionDirection::From => {
+                                            format!("+{}", transaction_total)
+                                        }
                                     };
                                     ui.label(transaction_string);
                                 });
 
                                 row.col(|ui| {
-                                    let confirmation_time_str: String;
-                                    if let Some(confirmation_time) = &transaction.confirmation_time
-                                    {
-                                        let confirmation_time_local = Local
-                                            .timestamp_opt(confirmation_time.timestamp as i64, 0)
-                                            .unwrap();
+                                    let confirmation_time_str = match confirmation_time {
+                                        Some(confirmation_time) => {
+                                            let confirmation_time_local = Local
+                                                .timestamp_opt(
+                                                    confirmation_time.timestamp as i64,
+                                                    0,
+                                                )
+                                                .unwrap();
+                                            confirmation_time_local
+                                                .format("%d/%m/%y %H:%M:%S")
+                                                .to_string()
+                                        }
+                                        None => "Pending".to_string(),
+                                    };
 
-                                        confirmation_time_str = confirmation_time_local
-                                            .format("%d/%m/%y %H:%M:%S")
-                                            .to_string();
-                                    } else {
-                                        confirmation_time_str = "Pending".to_string();
-                                    }
                                     ui.label(confirmation_time_str);
                                 });
                                 row.col(|ui| {
-                                    let destination_string: String;
-                                    let address: String;
-                                    if transaction_total < 0 {
-                                        destination_string = format!("To {}", addresses[0]);
-                                        address = addresses[0].to_string();
-                                    } else {
-                                        destination_string = format!("From {}", addresses[1]);
-                                        address = addresses[1].to_string()
-                                    }
+                                    let destination_string = match transaction_direction {
+                                        TransactionDirection::To => format!("To {}", address),
+                                        TransactionDirection::From => format!("From {}", address),
+                                    };
+
                                     ui.horizontal(|ui| {
                                         ui.label(destination_string);
                                         if ui.button("➕").clicked() {

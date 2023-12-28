@@ -30,6 +30,7 @@ use std::thread::JoinHandle;
 use crate::bitcoin_wallet::extract_address_from_transaction;
 use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
+use crate::bitcoin_wallet::get_transaction_details;
 use crate::bitcoin_wallet::make_transaction;
 
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
@@ -338,12 +339,8 @@ impl WalletModel {
             balance,
             transactions.clone(),
         )?;
-        for transaction in transactions.clone().unwrap() {
-            let addresses =
-                extract_address_from_transaction(&transaction.transaction.clone().unwrap());
-            let transaction_total = transaction.received as i64 - transaction.sent as i64;
-            let address_index = if transaction_total < 0 { 0 } else { 1 };
-            let address = addresses[address_index].to_string();
+        for transaction_details in transactions.clone().unwrap() {
+            let (_, address, _, _, _, _) = get_transaction_details(transaction_details);
             let _ = self.add_contact(&address, &address);
         }
         return Ok(());
