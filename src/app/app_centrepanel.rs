@@ -129,7 +129,7 @@ impl MyApp {
                                         if ui.button("➕").clicked() {
                                             let wallet_name = String::new();
                                             self.dialog_box = Some(DialogBox {
-                                                dialog_box_enum: DialogBoxEnum::AddContactWallet {
+                                                dialog_box_enum: DialogBoxEnum::ChangeContactName {
                                                     pub_key: address.clone(),
                                                 },
                                                 title: "Add Wallet",
@@ -212,7 +212,61 @@ impl MyApp {
         ui.add(egui::Image::from_texture(&img));
     }
 
-    pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
+    pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {
+        TableBuilder::new(ui)
+            .column(Column::exact(250.0).resizable(false))
+            .column(Column::exact(150.0))
+            .column(Column::exact(150.0))
+            .column(Column::exact(350.0))
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.heading("Wallet Name");
+                });
+                header.col(|ui| {
+                    ui.heading("Public Key");
+                });
+                header.col(|ui| {
+                    ui.heading("Last Transaction");
+                });
+            })
+            .body(|mut body| {
+                let contacts = &self.wallet_model.json_wallet_data.contacts;
+                for contact in contacts.iter() {
+                    body.row(30.0, |mut row| {
+                        row.col(|ui| {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .button(contact.wallet_name.clone())
+                                    .on_hover_text("Change")
+                                    .clicked()
+                                {
+                                    let wallet_name = contact.wallet_name.clone();
+                                    self.dialog_box = Some(DialogBox {
+                                        dialog_box_enum: DialogBoxEnum::ChangeContactName {
+                                            pub_key: contact.pub_key.clone(),
+                                        },
+                                        title: "Add Wallet",
+                                        message: Some(
+                                            format!("Wallet name for {}", contact.pub_key).into(),
+                                        ),
+                                        line_edit: Some(wallet_name),
+                                        optional: true,
+                                    });
+                                }
+                            });
+                        });
+
+                        row.col(|ui| {
+                            ui.label(contact.pub_key.clone());
+                        });
+
+                        row.col(|ui| {
+                            ui.label("Hello World");
+                        });
+                    });
+                }
+            });
+    }
 
     pub fn render_create_wallet_panel(&mut self, ui: &mut Ui, mnemonic_string: &str) {
         ui.heading("Write down the following mnemonic");

@@ -383,36 +383,38 @@ impl WalletModel {
         balance: Option<Balance>,
         transactions: Option<Vec<TransactionDetails>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut found_index = None;
+        let wallet;
         match entry_type {
             EntryType::Wallet => {
-                found_index = self
+                let index = self
                     .json_wallet_data
                     .wallets
                     .iter()
                     .position(|wallet| wallet.priv_key == Some(address.to_string()))
+                    .unwrap();
+                wallet = &mut self.json_wallet_data.wallets[index];
             }
             EntryType::Contact => {
-                found_index = self
+                let index = self
                     .json_wallet_data
                     .contacts
                     .iter()
                     .position(|wallet| wallet.pub_key == address)
+                    .unwrap();
+                wallet = &mut self.json_wallet_data.contacts[index];
             }
         }
-        if let Some(index) = found_index {
-            let wallet = &mut self.json_wallet_data.wallets[index];
-            if let Some(wallet_name) = wallet_name {
-                wallet.wallet_name = wallet_name;
-            }
 
-            if let Some(balance) = balance {
-                wallet.balance = Some(balance);
-            }
+        if let Some(wallet_name) = wallet_name {
+            wallet.wallet_name = wallet_name;
+        }
 
-            if let Some(transactions) = transactions {
-                wallet.sorted_transactions = Some(transactions);
-            }
+        if let Some(balance) = balance {
+            wallet.balance = Some(balance);
+        }
+
+        if let Some(transactions) = transactions {
+            wallet.sorted_transactions = Some(transactions);
         }
 
         let json_string = serde_json::to_string(&self.json_wallet_data)?;
