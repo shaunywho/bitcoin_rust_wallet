@@ -1,13 +1,10 @@
 use crate::bitcoin_wallet::{
-    extract_address_from_transaction, get_transaction_details, TransactionDirection,
+    generate_qrcode_from_address, get_transaction_details, TransactionDirection,
 };
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
-use super::{
-    generate_qrcode_from_address, CentralPanelState, DialogBox, DialogBoxEnum, MyApp,
-    SidePanelState,
-};
+use super::{CentralPanelState, DialogBox, DialogBoxEnum, MyApp, SidePanelState};
 
 use chrono::prelude::*;
 
@@ -18,8 +15,8 @@ impl MyApp {
         ui.set_enabled(enabled);
         ui.vertical_centered(|ui| {
             let wallet = self.wallet_model.get_selected_wallet_data();
-            ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
-            // let wallet_name = self
+            ui.heading(&wallet.wallet_name.to_owned());
+            ui.add_space(10.0);
             if ui.button("Rename Wallet").clicked() {
                 self.rename_wallet_string = wallet.wallet_name.to_string();
                 self.dialog_box = Some(DialogBox {
@@ -30,18 +27,19 @@ impl MyApp {
                     optional: true,
                 });
             }
-        });
-        let wallet = self.wallet_model.get_selected_wallet_data();
-        ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
-        ui.add_space(50.0);
-        let public_key = &wallet.pub_key;
 
-        ui.label(format!("Public Key: {:?}", &public_key));
-        if ui.button("Copy").clicked() {
-            ui.output_mut(|o| o.copied_text = public_key.to_string());
-        };
+            let wallet = self.wallet_model.get_selected_wallet_data();
+            ui.add_space(10.0);
+            ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
+            ui.add_space(50.0);
+            let public_key = &wallet.pub_key;
+            ui.horizontal(|ui| {
+                ui.label(format!("Public Key: {}", &public_key));
+                if ui.button("📋").on_hover_text("Click to copy").clicked() {
+                    ui.output_mut(|o| o.copied_text = public_key.to_string());
+                }
+            });
 
-        ui.vertical_centered(|ui| {
             TableBuilder::new(ui)
                 .column(Column::exact(200.0).resizable(false))
                 .column(Column::exact(70.0))
@@ -120,27 +118,17 @@ impl MyApp {
                                 });
                                 row.col(|ui| {
                                     let destination_string = match transaction_direction {
-                                        TransactionDirection::To => format!("To {}", address),
-                                        TransactionDirection::From => format!("From {}", address),
+                                        TransactionDirection::To => format!(
+                                            "To {}",
+                                            self.wallet_model.get_wallet_name(&address)
+                                        ),
+                                        TransactionDirection::From => format!(
+                                            "From {}",
+                                            self.wallet_model.get_wallet_name(&address)
+                                        ),
                                     };
 
-                                    ui.horizontal(|ui| {
-                                        ui.label(destination_string);
-                                        if ui.button("➕").clicked() {
-                                            let wallet_name = String::new();
-                                            self.dialog_box = Some(DialogBox {
-                                                dialog_box_enum: DialogBoxEnum::ChangeContactName {
-                                                    pub_key: address.clone(),
-                                                },
-                                                title: "Add Wallet",
-                                                message: Some(
-                                                    format!("Wallet name for {}", address).into(),
-                                                ),
-                                                line_edit: Some(wallet_name),
-                                                optional: true,
-                                            });
-                                        }
-                                    });
+                                    ui.label(destination_string);
                                 });
                             });
                         }
@@ -200,79 +188,82 @@ impl MyApp {
         ui.set_enabled(enabled);
         let wallet = self.wallet_model.get_selected_wallet_data();
         let public_key = &wallet.pub_key;
-        ui.label(format!("Public Key: {:?}", public_key));
-        // Encode some data into bits.
+        ui.vertical_centered(|ui| {
+            ui.label(format!("Public Key: {:?}", public_key));
+            // Encode some data into bits.
 
-        let img = ui.ctx().load_texture(
-            "my-image",
-            generate_qrcode_from_address(&public_key).unwrap(),
-            Default::default(),
-        );
+            let img = ui.ctx().load_texture(
+                "my-image",
+                generate_qrcode_from_address(&public_key).unwrap(),
+                Default::default(),
+            );
 
-        ui.add(egui::Image::from_texture(&img));
+            ui.add(egui::Image::from_texture(&img));
+        });
     }
 
     pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {
-        TableBuilder::new(ui)
-            .column(Column::exact(250.0).resizable(false))
-            .column(Column::exact(150.0))
-            .column(Column::exact(150.0))
-            .column(Column::exact(350.0))
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.heading("Wallet Name");
-                });
-                header.col(|ui| {
-                    ui.heading("Public Key");
-                });
-                header.col(|ui| {
-                    ui.heading("Last Transaction");
-                });
-            })
-            .body(|mut body| {
-                let contacts = &self.wallet_model.json_wallet_data.contacts;
-                for contact in contacts.iter() {
-                    body.row(30.0, |mut row| {
-                        row.col(|ui| {
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .button(contact.wallet_name.clone())
-                                    .on_hover_text("Change")
-                                    .clicked()
-                                {
-                                    let wallet_name = contact.wallet_name.clone();
-                                    self.dialog_box = Some(DialogBox {
-                                        dialog_box_enum: DialogBoxEnum::ChangeContactName {
-                                            pub_key: contact.pub_key.clone(),
-                                        },
-                                        title: "Add Wallet",
-                                        message: Some(
-                                            format!("Wallet name for {}", contact.pub_key).into(),
-                                        ),
-                                        line_edit: Some(wallet_name),
-                                        optional: true,
-                                    });
+        ui.vertical_centered(|ui| {
+            TableBuilder::new(ui)
+                .column(Column::exact(250.0).resizable(false))
+                .column(Column::exact(350.0))
+                .column(Column::exact(100.0))
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.heading("Wallet Name");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Public Key");
+                    });
+                    header.col(|ui| {});
+                })
+                .body(|mut body| {
+                    let contacts = &self.wallet_model.json_wallet_data.contacts;
+                    for contact in contacts.iter() {
+                        body.row(30.0, |mut row| {
+                            row.col(|ui| {
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button(contact.wallet_name.clone())
+                                        .on_hover_text("Change")
+                                        .clicked()
+                                    {
+                                        let wallet_name = contact.wallet_name.clone();
+                                        self.dialog_box = Some(DialogBox {
+                                            dialog_box_enum: DialogBoxEnum::ChangeContactName {
+                                                pub_key: contact.pub_key.clone(),
+                                            },
+                                            title: "Change Wallet Name",
+                                            message: Some(
+                                                format!("Wallet name for {}", contact.pub_key)
+                                                    .into(),
+                                            ),
+                                            line_edit: Some(wallet_name),
+                                            optional: true,
+                                        });
+                                    }
+                                });
+                            });
+
+                            row.col(|ui| {
+                                ui.label(contact.pub_key.clone());
+                            });
+                            row.col(|ui| {
+                                if ui.button("📋").on_hover_text("Click to copy").clicked() {
+                                    ui.output_mut(|o| o.copied_text = contact.pub_key.clone());
                                 }
                             });
                         });
-
-                        row.col(|ui| {
-                            ui.label(contact.pub_key.clone());
-                        });
-
-                        row.col(|ui| {
-                            ui.label("Hello World");
-                        });
-                    });
-                }
-            });
+                    }
+                });
+        });
     }
 
     pub fn render_create_wallet_panel(&mut self, ui: &mut Ui, mnemonic_string: &str) {
         ui.heading("Write down the following mnemonic");
         ui.horizontal(|ui| {
             ui.label(mnemonic_string);
-            if ui.button("Copy Mnemonic").clicked() {
+            if ui.button("📋").on_hover_text("Copy Mnemonic").clicked() {
                 ui.output_mut(|o| o.copied_text = mnemonic_string.to_string());
             }
         });
@@ -360,6 +351,8 @@ impl MyApp {
         }
     }
 
+    pub fn render_settings_panel(&mut self, enabled: bool, ui: &mut Ui) {}
+
     pub fn render_centrepanel(
         &mut self,
         enabled: bool,
@@ -381,6 +374,7 @@ impl MyApp {
                 SidePanelState::Sending => self.render_sending_panel(enabled, ui),
                 SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
                 SidePanelState::Contacts => self.render_contacts_panel(enabled, ui),
+                SidePanelState::Settings => self.render_settings_panel(enabled, ui),
             },
         });
     }

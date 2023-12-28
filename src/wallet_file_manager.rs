@@ -309,7 +309,7 @@ impl WalletModel {
         fs::write(&self.filename, encrypted_string)?;
         return Ok(());
     }
-    //  Below is fishy, probably want to redo it
+
     pub fn rename_wallet(
         &mut self,
         entry_type: EntryType,
@@ -341,7 +341,14 @@ impl WalletModel {
         )?;
         for transaction_details in transactions.clone().unwrap() {
             let (_, address, _, _, _, _) = get_transaction_details(transaction_details);
-            let _ = self.add_contact(&address, &address);
+            if !self
+                .json_wallet_data
+                .wallets
+                .iter()
+                .any(|wallet| wallet.pub_key == address)
+            {
+                let _ = self.add_contact(&address, &address);
+            }
         }
         return Ok(());
     }
@@ -353,6 +360,23 @@ impl WalletModel {
             .unwrap()
             .to_string();
         return first_wallet;
+    }
+
+    pub fn get_wallet_name(&self, pub_key: &str) -> String {
+        self.json_wallet_data
+            .wallets
+            .iter()
+            .find(|wallet| wallet.pub_key == pub_key)
+            .map(|wallet| wallet.wallet_name.clone())
+            .unwrap_or_else(|| {
+                self.json_wallet_data
+                    .contacts
+                    .iter()
+                    .find(|contact| contact.pub_key == pub_key)
+                    .expect("Wallet not found in contacts")
+                    .wallet_name
+                    .clone()
+            })
     }
 
     pub fn get_selected_wallet_string(&self) -> String {

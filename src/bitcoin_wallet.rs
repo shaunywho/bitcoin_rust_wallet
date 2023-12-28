@@ -19,12 +19,14 @@ use bdk::{
     wallet::{AddressIndex, Wallet},
     SignOptions, SyncOptions,
 };
+use qrcode_generator::QrCodeEcc;
 
 type TransactionTotal = i64;
 type Fee = u64;
 type TransactionAddress = String;
 type TransactionId = String;
 type ConfirmationTime = BlockTime;
+const QRCODE_DIMENSION: usize = 300;
 pub enum TransactionDirection {
     To,
     From,
@@ -184,8 +186,8 @@ pub fn get_transaction_details(
     let transaction = transaction_details.transaction.unwrap();
     let transaction_id = transaction_details.txid.to_string();
     let addresses = extract_address_from_transaction(&transaction.clone());
-    let address_index = if transaction_total < 0 { 0 } else { 1 };
-    let transaction_address = addresses[address_index].to_string();
+    // let address_index = if transaction_total < 0 { 0 } else { 1 };
+    let transaction_address = addresses[0].to_string();
     let fee = transaction_details.fee.unwrap();
     let confirmation_time = transaction_details.confirmation_time;
     let transaction_direction = if transaction_total < 0 {
@@ -201,6 +203,16 @@ pub fn get_transaction_details(
         fee,
         confirmation_time,
     );
+}
+
+pub fn generate_qrcode_from_address(address: &str) -> Result<egui::ColorImage, image::ImageError> {
+    let result =
+        qrcode_generator::to_png_to_vec(address, QrCodeEcc::Medium, QRCODE_DIMENSION).unwrap();
+    let dynamic_image = image::load_from_memory(&result).unwrap();
+    let size = [dynamic_image.width() as _, dynamic_image.height() as _];
+    let image_buffer = dynamic_image.to_luma8();
+    let pixels = image_buffer.as_flat_samples();
+    Ok(egui::ColorImage::from_gray(size, pixels.as_slice()))
 }
 
 #[cfg(test)]

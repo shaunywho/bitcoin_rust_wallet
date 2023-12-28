@@ -39,6 +39,7 @@ enum SidePanelState {
     Sending,
     Receiving,
     Contacts,
+    Settings,
 }
 #[derive(Clone)]
 pub struct DialogBox {
@@ -337,13 +338,4 @@ impl MyApp {
         self.render_toppanel(enabled, ctx, _frame);
         self.render_centrepanel(enabled, ctx, _frame);
     }
-}
-
-pub fn generate_qrcode_from_address(address: &str) -> Result<egui::ColorImage, image::ImageError> {
-    let result = qrcode_generator::to_png_to_vec(address, QrCodeEcc::Medium, 100).unwrap();
-    let dynamic_image = image::load_from_memory(&result).unwrap();
-    let size = [dynamic_image.width() as _, dynamic_image.height() as _];
-    let image_buffer = dynamic_image.to_luma8();
-    let pixels = image_buffer.as_flat_samples();
-    Ok(egui::ColorImage::from_gray(size, pixels.as_slice()))
 }
