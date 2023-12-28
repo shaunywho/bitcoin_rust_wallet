@@ -1,5 +1,3 @@
-use bdk::bitcoin::bip32::ExtendedPrivKey;
-use bdk::bitcoin::Transaction;
 use bdk::blockchain::Blockchain;
 use bdk::blockchain::ElectrumBlockchain;
 use bdk::database::MemoryDatabase;
@@ -18,16 +16,12 @@ use std::fs::File;
 use std::fs::OpenOptions;
 
 use std::io::Read;
-use std::io::Write;
-
-use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 
-use crate::bitcoin_wallet::extract_address_from_transaction;
 use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
 use crate::bitcoin_wallet::get_transaction_details;
@@ -71,48 +65,6 @@ pub struct WalletModel {
     pub selected_wallet: Option<String>,
     pub key: Option<MagicCrypt256>,
 }
-
-// pub struct WalletElement {
-//     pub wallet_name: String,
-//     pub address: String,
-//     pub wallet_obj: Arc<Mutex<Wallet<MemoryDatabase>>>,
-//     pub balance: Option<Balance>,
-//     pub sorted_transactions: Option<Vec<TransactionDetails>>,
-// }
-
-// impl WalletElement {
-//     pub fn new(priv_key: &str, wallet_name: &str) -> Self {
-//         let wallet_obj = generate_wallet(ExtendedPrivKey::from_str(priv_key).unwrap()).unwrap();
-
-//         let wallet_name = wallet_name.to_string();
-
-//         let address = wallet_obj
-//             .get_address(AddressIndex::Peek(0))
-//             .unwrap()
-//             .to_string();
-
-//         return Self {
-//             wallet_name: wallet_name,
-//             address: address,
-//             wallet_obj: Arc::new(Mutex::new(wallet_obj)),
-//             balance: None,
-//             sorted_transactions: None,
-//         };
-//     }
-
-//     pub fn get_total(&self) -> u64 {
-//         match &self.balance {
-//             None => 0,
-//             Some(balance) => balance.clone().get_total(),
-//         }
-//     }
-
-//     pub fn make_transaction(&self, recipient_address: &str, amount: u64) -> Transaction {
-//         let wallet_locked = self.wallet_obj.lock().unwrap();
-//         let transaction = make_transaction(&wallet_locked, recipient_address, amount);
-//         return transaction;
-//     }
-// }
 
 impl JsonWallet {
     pub fn get_total(&self) -> u64 {

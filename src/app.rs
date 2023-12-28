@@ -1,6 +1,4 @@
-use crate::bitcoin_wallet::{
-    bitcoin_test, generate_mnemonic_string, generate_xpriv, is_valid_bitcoin_address,
-};
+use crate::bitcoin_wallet::{bitcoin_test, generate_mnemonic_string, is_valid_bitcoin_address};
 
 mod app_centrepanel;
 mod app_sidepanel;
@@ -17,7 +15,6 @@ const PASSWORD_NEEDED_TIMEOUT_S: i64 = 60;
 use chrono::{DateTime, Duration};
 
 use egui::InnerResponse;
-use qrcode_generator::QrCodeEcc;
 use std::num::ParseIntError;
 #[derive(PartialEq)]
 enum CentralPanelState {
@@ -85,7 +82,8 @@ impl MyApp {
             DialogBoxEnum::IncorrectMnemonic => {}
             DialogBoxEnum::ChangeContactName { pub_key } => {
                 let wallet_name = line_edit.unwrap();
-                self.wallet_model
+                let _ = self
+                    .wallet_model
                     .rename_wallet(EntryType::Contact, pub_key, &wallet_name);
             }
 
@@ -302,7 +300,7 @@ impl MyApp {
                 }
             }
             CentralPanelState::WalletAvailable {
-                mut last_interaction_time,
+                last_interaction_time,
             } => {
                 let current_time = chrono::offset::Local::now();
                 if (current_time - last_interaction_time)
@@ -330,10 +328,39 @@ impl MyApp {
             self.render_dialog_box(ctx);
             enabled = false;
         }
-        if self.central_panel_state == CentralPanelState::PasswordNeeded {
+        if self.central_panel_state == CentralPanelState::PasswordNeeded
+            || self.central_panel_state == CentralPanelState::WalletFileNotAvailable
+            || self.central_panel_state == CentralPanelState::WalletNotInitialised
+        {
             self.dialog_box = None;
             enabled = false;
         }
+
+        // match (&self.dialog_box, &self.central_panel_state) {
+        //     (
+        //         Some(_),
+        //         CentralPanelState::WalletAvailable {
+        //             last_interaction_time: _,
+        //         },
+        //     ) => {
+        //         self.render_dialog_box(ctx);
+        //         enabled = false;
+        //     }
+        //     (
+        //         None,
+        //         CentralPanelState::WalletAvailable {
+        //             last_interaction_time: _,
+        //         },
+        //     ) => {
+        //         self.render_dialog_box(ctx);
+        //         enabled = true;
+        //     }
+        //     (_, _) => {
+        //         self.dialog_box = None;
+        //         enabled = false;
+        //     }
+        // }
+
         self.render_sidepanel(enabled, ctx, _frame);
         self.render_toppanel(enabled, ctx, _frame);
         self.render_centrepanel(enabled, ctx, _frame);
