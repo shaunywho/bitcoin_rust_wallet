@@ -40,6 +40,7 @@ pub struct JsonWalletData {
 pub struct JsonWallet {
     pub pub_key: String,
     pub priv_key: Option<String>,
+    pub mnemonic: Option<String>,
     pub wallet_name: String,
     pub balance: Option<Balance>,
     pub sorted_transactions: Option<Vec<TransactionDetails>>,
@@ -174,12 +175,14 @@ impl WalletModel {
     fn append_to_file(
         &mut self,
         priv_key: Option<String>,
+        mnemonic: Option<String>,
         pub_key: &str,
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let json_wallet = JsonWallet {
-            priv_key: priv_key.clone(),
             pub_key: pub_key.to_string(),
+            priv_key: priv_key.clone(),
+            mnemonic: mnemonic.clone(),
             wallet_name: wallet_name.to_string(),
             balance: None,
             sorted_transactions: None,
@@ -197,7 +200,8 @@ impl WalletModel {
         Ok(())
     }
 
-    pub fn add_wallet(&mut self, priv_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_wallet(&mut self, mnemonic: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let priv_key = generate_xpriv(mnemonic).unwrap().to_string();
         if self
             .json_wallet_data
             .wallets
@@ -207,9 +211,10 @@ impl WalletModel {
             panic!("Wallet already exists");
         } else {
             let wallet_name = "New Wallet Name";
-            let wallet = generate_wallet(priv_key).unwrap();
+            let wallet = generate_wallet(&priv_key).unwrap();
             self.append_to_file(
-                Some(priv_key.to_owned()),
+                Some(priv_key.to_string()),
+                Some(mnemonic.to_string()),
                 &wallet
                     .get_address(AddressIndex::Peek(0))
                     .unwrap()
@@ -237,18 +242,9 @@ impl WalletModel {
         {
             return Ok(());
         }
-        self.append_to_file(None, pub_key, wallet_name);
+        self.append_to_file(None, None, pub_key, wallet_name);
 
         return Ok(());
-    }
-
-    pub fn add_wallet_from_mnemonic(
-        &mut self,
-        mnemonic: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let xpriv = generate_xpriv(mnemonic).unwrap().to_string();
-
-        return self.add_wallet(&xpriv);
     }
 
     pub fn create_passworded_file(

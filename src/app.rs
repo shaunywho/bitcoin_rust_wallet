@@ -28,6 +28,9 @@ enum CentralPanelState {
     WalletAvailable {
         last_interaction_time: DateTime<chrono::Local>,
     },
+    DeleteWallet,
+    RenameWallet,
+    ShowSecret,
 }
 
 #[derive(PartialEq)]
@@ -42,9 +45,13 @@ enum SidePanelState {
 pub struct DialogBox {
     pub dialog_box_enum: DialogBoxEnum,
     pub title: &'static str,
+    pub dialog_line_edit: Vec<DialogLineEdit>,
+    pub optional: bool,
+}
+#[derive(Clone)]
+pub struct DialogLineEdit {
     pub message: Option<String>,
     pub line_edit: Option<String>,
-    pub optional: bool,
 }
 #[derive(Clone)]
 pub enum DialogBoxEnum {
@@ -54,6 +61,8 @@ pub enum DialogBoxEnum {
     ConfirmSend,
     InvalidTransaction,
     ChangeContactName { pub_key: String },
+    ShowMnemonic,
+    DeleteWallet,
 }
 
 pub struct MyApp {
@@ -73,22 +82,20 @@ pub struct MyApp {
 }
 
 impl MyApp {
-    fn accept_process(&mut self, line_edit: Option<String>) {
+    fn accept_process(&mut self, edited_lines: Vec<String>) {
         let Some(dialog_box) = &self.dialog_box else {
             return;
         };
         match &dialog_box.dialog_box_enum {
-            DialogBoxEnum::WalletCreated => {}
-            DialogBoxEnum::IncorrectMnemonic => {}
             DialogBoxEnum::ChangeContactName { pub_key } => {
-                let wallet_name = line_edit.unwrap();
+                let wallet_name = &edited_lines[0];
                 let _ = self
                     .wallet_model
                     .rename_wallet(EntryType::Contact, pub_key, &wallet_name);
             }
 
             DialogBoxEnum::ChangeWalletName => {
-                let new_wallet_name = line_edit.unwrap();
+                let new_wallet_name = &edited_lines[0];
 
                 let selected_priv_key = self.wallet_model.get_selected_wallet_string();
                 let _ = self.wallet_model.rename_wallet(
@@ -102,7 +109,7 @@ impl MyApp {
                 let amount = (&self.amount_to_send_string).parse().unwrap();
                 self.wallet_model.send_transaction(&recipient_addr, amount);
             }
-            DialogBoxEnum::InvalidTransaction { .. } => {}
+            _ => {}
         }
         self.dialog_box = None;
     }
@@ -112,17 +119,20 @@ impl MyApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                if let Some(message) = self.dialog_box.as_ref().unwrap().clone().message {
-                    ui.vertical_centered(|ui| {
-                        ui.label(message);
-                    });
-                }
-                let mut edited_line: Option<String> = None;
-                if let Some(line_edit) = &mut self.dialog_box.as_mut().unwrap().line_edit {
-                    ui.vertical_centered(|ui| {
-                        ui.text_edit_singleline(line_edit);
-                        edited_line = Some(line_edit.to_string());
-                    });
+                let mut edited_lines = Vec::new();
+                for dialog_line_edit in &mut self.dialog_box.as_mut().unwrap().dialog_line_edit {
+                    if let Some(message) = &dialog_line_edit.message {
+                        ui.vertical_centered(|ui| {
+                            ui.label(message);
+                        });
+                    }
+
+                    if let Some(mut line_edit) = dialog_line_edit.line_edit.as_mut() {
+                        ui.vertical_centered(|ui| {
+                            ui.text_edit_singleline(line_edit);
+                            edited_lines.push(line_edit.to_string());
+                        });
+                    }
                 }
                 ui.vertical_centered(|ui| {
                     if self.dialog_box.as_ref().unwrap().optional {
@@ -132,7 +142,7 @@ impl MyApp {
                     }
 
                     if ui.button("Accept").clicked() {
-                        self.accept_process(edited_line);
+                        self.accept_process(edited_lines);
                     }
                 });
             });

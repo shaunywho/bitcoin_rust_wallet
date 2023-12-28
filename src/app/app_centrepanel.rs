@@ -4,7 +4,7 @@ use crate::bitcoin_wallet::{
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
-use super::{CentralPanelState, DialogBox, DialogBoxEnum, MyApp, SidePanelState};
+use super::{CentralPanelState, DialogBox, DialogBoxEnum, DialogLineEdit, MyApp, SidePanelState};
 
 use chrono::prelude::*;
 
@@ -12,7 +12,6 @@ use zxcvbn::zxcvbn;
 
 impl MyApp {
     pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
-        let panel_width = ui.available_width();
         ui.set_enabled(enabled);
         let wallet = self.wallet_model.get_selected_wallet_data();
         ui.vertical_centered(|ui| {
@@ -20,6 +19,7 @@ impl MyApp {
             ui.heading(&wallet.wallet_name.to_owned());
         });
         ui.add_space(20.0);
+
         ui.horizontal(|ui| {
             let mut selected = 2;
             egui::ComboBox::from_label("Selected Wallet")
@@ -30,23 +30,54 @@ impl MyApp {
                     ui.selectable_value(&mut selected, 3, "Third");
                 });
             if ui.button("Show Mnemonic").clicked() {
-                //                         //
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::ShowMnemonic,
+                    title: "Mnemonic",
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: Some(wallet.mnemonic.unwrap()),
+                        line_edit: None,
+                    }]),
+
+                    optional: false,
+                });
             }
             if ui.button("Rename Wallet").clicked() {
                 self.rename_wallet_string = wallet.wallet_name.to_string();
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::ChangeWalletName,
                     title: "Change Wallet Name",
-                    message: Some("Enter new wallet name".into()),
-                    line_edit: Some(self.rename_wallet_string.clone()),
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: Some("Enter new wallet name".into()),
+                        line_edit: Some(self.rename_wallet_string.clone()),
+                    }]),
+
                     optional: true,
                 });
             }
             if ui.button("Delete Wallet").clicked() {
-                //                         //
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::DeleteWallet,
+                    title: "Delete Wallet",
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: Some("Are you sure you want to delete this wallet?".to_string()),
+                        line_edit: None,
+                    }]),
+
+                    optional: true,
+                });
             }
             if ui.button("Add New Wallet").clicked() {
-                //                         //
+                self.confirm_mnemonic_string = String::new();
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::DeleteWallet,
+                    title: "Delete Wallet",
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: Some("Are you sure you want to delete this wallet?".to_string()),
+                        line_edit: None,
+                    }]),
+
+                    optional: true,
+                });
             }
             if ui.button("Add Existing Wallet").clicked() {
                 //                         //
@@ -181,14 +212,17 @@ impl MyApp {
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::ConfirmSend,
                         title: "Confirm Transaction",
-                        message: Some(
-                            format!(
-                                "Are you sure you want to send {} Sats to {}?",
-                                &self.amount_to_send_string, &self.recipient_address_string
-                            )
-                            .into(),
-                        ),
-                        line_edit: None,
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some(
+                                format!(
+                                    "Are you sure you want to send {} Sats to {}?",
+                                    &self.amount_to_send_string, &self.recipient_address_string
+                                )
+                                .into(),
+                            ),
+                            line_edit: None,
+                        }]),
+
                         optional: true,
                     });
                 } else {
@@ -196,8 +230,10 @@ impl MyApp {
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::InvalidTransaction,
                         title: "Invalid Transaction",
-                        message: Some(invalid_message),
-                        line_edit: None,
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some(invalid_message),
+                            line_edit: None,
+                        }]),
                         optional: false,
                     })
                 }
@@ -273,11 +309,13 @@ impl MyApp {
                                                 pub_key: contact.pub_key.clone(),
                                             },
                                             title: "Change Wallet Name",
-                                            message: Some(
-                                                format!("Wallet name for {}", contact.pub_key)
-                                                    .into(),
-                                            ),
-                                            line_edit: Some(wallet_name),
+                                            dialog_line_edit: Vec::from([DialogLineEdit {
+                                                message: Some(
+                                                    format!("Wallet name for {}", contact.pub_key)
+                                                        .into(),
+                                                ),
+                                                line_edit: Some(wallet_name),
+                                            }]),
                                             optional: true,
                                         });
                                     }
@@ -316,14 +354,14 @@ impl MyApp {
             ui.add_space(10.0);
             if ui.button("Confirm").clicked() {
                 if self.confirm_mnemonic_string == mnemonic_string {
-                    self.wallet_model
-                        .add_wallet_from_mnemonic(&mnemonic_string)
-                        .unwrap();
+                    self.wallet_model.add_wallet(&mnemonic_string).unwrap();
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::WalletCreated,
                         title: "Wallet Created",
-                        message: None,
-                        line_edit: None,
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: None,
+                            line_edit: None,
+                        }]),
                         optional: false,
                     });
                     self.central_panel_state = CentralPanelState::WalletAvailable {
@@ -333,8 +371,10 @@ impl MyApp {
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
                         title: "Incorrect Mnemonic",
-                        message: Some("Check your entry and type in the mnemonic again".into()),
-                        line_edit: None,
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some("Check your entry and type in the mnemonic again".into()),
+                            line_edit: None,
+                        }]),
                         optional: false,
                     })
                 }
