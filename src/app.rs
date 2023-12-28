@@ -322,44 +322,31 @@ impl MyApp {
     }
 
     fn render_window(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let mut enabled = true;
+        let enabled: bool;
 
-        if let Some(_) = self.dialog_box {
-            self.render_dialog_box(ctx);
-            enabled = false;
+        match (&self.dialog_box, &self.central_panel_state) {
+            (
+                Some(_),
+                CentralPanelState::WalletAvailable {
+                    last_interaction_time: _,
+                },
+            ) => {
+                self.render_dialog_box(ctx);
+                enabled = false;
+            }
+            (
+                None,
+                CentralPanelState::WalletAvailable {
+                    last_interaction_time: _,
+                },
+            ) => {
+                enabled = true;
+            }
+            (_, _) => {
+                self.dialog_box = None;
+                enabled = false;
+            }
         }
-        if self.central_panel_state == CentralPanelState::PasswordNeeded
-            || self.central_panel_state == CentralPanelState::WalletFileNotAvailable
-            || self.central_panel_state == CentralPanelState::WalletNotInitialised
-        {
-            self.dialog_box = None;
-            enabled = false;
-        }
-
-        // match (&self.dialog_box, &self.central_panel_state) {
-        //     (
-        //         Some(_),
-        //         CentralPanelState::WalletAvailable {
-        //             last_interaction_time: _,
-        //         },
-        //     ) => {
-        //         self.render_dialog_box(ctx);
-        //         enabled = false;
-        //     }
-        //     (
-        //         None,
-        //         CentralPanelState::WalletAvailable {
-        //             last_interaction_time: _,
-        //         },
-        //     ) => {
-        //         self.render_dialog_box(ctx);
-        //         enabled = true;
-        //     }
-        //     (_, _) => {
-        //         self.dialog_box = None;
-        //         enabled = false;
-        //     }
-        // }
 
         self.render_sidepanel(enabled, ctx, _frame);
         self.render_toppanel(enabled, ctx, _frame);

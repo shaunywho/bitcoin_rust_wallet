@@ -12,12 +12,26 @@ use zxcvbn::zxcvbn;
 
 impl MyApp {
     pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
+        let panel_width = ui.available_width();
         ui.set_enabled(enabled);
-        ui.add_space(20.0);
+        let wallet = self.wallet_model.get_selected_wallet_data();
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_model.get_selected_wallet_data();
+            ui.add_space(20.0);
             ui.heading(&wallet.wallet_name.to_owned());
-            ui.add_space(10.0);
+        });
+        ui.add_space(20.0);
+        ui.horizontal(|ui| {
+            let mut selected = 2;
+            egui::ComboBox::from_label("Selected Wallet")
+                .selected_text(format!("{:?}", selected))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut selected, 1, "First");
+                    ui.selectable_value(&mut selected, 2, "Second");
+                    ui.selectable_value(&mut selected, 3, "Third");
+                });
+            if ui.button("Show Mnemonic").clicked() {
+                //                         //
+            }
             if ui.button("Rename Wallet").clicked() {
                 self.rename_wallet_string = wallet.wallet_name.to_string();
                 self.dialog_box = Some(DialogBox {
@@ -28,7 +42,18 @@ impl MyApp {
                     optional: true,
                 });
             }
-
+            if ui.button("Delete Wallet").clicked() {
+                //                         //
+            }
+            if ui.button("Add New Wallet").clicked() {
+                //                         //
+            }
+            if ui.button("Add Existing Wallet").clicked() {
+                //                         //
+            }
+        });
+        ui.add_space(20.0);
+        ui.vertical_centered(|ui| {
             let wallet = self.wallet_model.get_selected_wallet_data();
             ui.add_space(10.0);
             ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
@@ -397,23 +422,26 @@ impl MyApp {
         ctx: &egui::Context,
         _frame: &mut eframe::Frame,
     ) {
-        egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
-            CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(ui),
-            CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => {
-                let mnemonic_string = mnemonic_string.clone();
-                self.render_create_wallet_panel(ui, &mnemonic_string);
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let width = ui.available_width();
+            match &self.central_panel_state {
+                CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(ui),
+                CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => {
+                    let mnemonic_string = mnemonic_string.clone();
+                    self.render_create_wallet_panel(ui, &mnemonic_string);
+                }
+                CentralPanelState::WalletNotInitialised => {}
+                CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
+                CentralPanelState::WalletAvailable {
+                    last_interaction_time,
+                } => match self.side_panel_state {
+                    SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
+                    SidePanelState::Sending => self.render_sending_panel(enabled, ui),
+                    SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
+                    SidePanelState::Contacts => self.render_contacts_panel(enabled, ui),
+                    SidePanelState::Settings => self.render_settings_panel(enabled, ui),
+                },
             }
-            CentralPanelState::WalletNotInitialised => {}
-            CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
-            CentralPanelState::WalletAvailable {
-                last_interaction_time,
-            } => match self.side_panel_state {
-                SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
-                SidePanelState::Sending => self.render_sending_panel(enabled, ui),
-                SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
-                SidePanelState::Contacts => self.render_contacts_panel(enabled, ui),
-                SidePanelState::Settings => self.render_settings_panel(enabled, ui),
-            },
         });
     }
 }
