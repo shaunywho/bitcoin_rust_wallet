@@ -1,5 +1,3 @@
-use egui::InnerResponse;
-
 use super::{MyApp, SidePanel};
 impl MyApp {
     pub fn render_toppanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -15,7 +13,7 @@ impl MyApp {
                     ui.heading("Rust Bitcoin Wallet");
 
                     ui.add_space(10.0);
-                    let title = match self.side_panel_selected {
+                    let title = match self.side_panel_active {
                         SidePanel::Wallet => "Wallet",
                         SidePanel::Sending => "Send Transaction",
                         SidePanel::Receiving => "Receive Transaction",

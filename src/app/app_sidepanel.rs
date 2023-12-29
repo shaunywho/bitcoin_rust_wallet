@@ -1,5 +1,3 @@
-use egui::InnerResponse;
-
 use super::{CentralPanelState, MyApp, SidePanel};
 const DIMENSIONS: f32 = 130.0;
 impl MyApp {
@@ -10,82 +8,82 @@ impl MyApp {
                 (_, _) => ui.set_enabled(false),
             }
 
-            let side_panel_selected = SidePanel::Wallet;
+            let side_panel_active = SidePanel::Wallet;
             ui.add_space(10.0);
             if ui
                 .add_sized(
                     [DIMENSIONS, DIMENSIONS],
                     egui::ImageButton::new(egui::include_image!("../../assets/wallet.png"))
                         .rounding(5.0)
-                        .selected(self.side_panel_selected == side_panel_selected),
+                        .selected(self.side_panel_active == side_panel_active),
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_selected, CentralPanelState::WalletMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::WalletMain);
             }
             ui.add_space(10.0);
-            let side_panel_selected = SidePanel::Sending;
+            let side_panel_active = SidePanel::Sending;
             if ui
                 .add_sized(
                     [DIMENSIONS, DIMENSIONS],
                     egui::ImageButton::new(egui::include_image!("../../assets/send.png"))
                         .rounding(5.0)
-                        .selected(self.side_panel_selected == side_panel_selected),
+                        .selected(self.side_panel_active == side_panel_active),
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_selected, CentralPanelState::SendingMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::SendingMain);
             }
 
-            let side_panel_selected = SidePanel::Receiving;
+            let side_panel_active = SidePanel::Receiving;
             ui.add_space(10.0);
             if ui
                 .add_sized(
                     [DIMENSIONS, DIMENSIONS],
                     egui::ImageButton::new(egui::include_image!("../../assets/receive.png"))
                         .rounding(5.0)
-                        .selected(self.side_panel_selected == side_panel_selected),
+                        .selected(self.side_panel_active == side_panel_active),
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_selected, CentralPanelState::ReceivingMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::ReceivingMain);
             }
 
-            let side_panel_selected = SidePanel::Contacts;
+            let side_panel_active = SidePanel::Contacts;
             ui.add_space(10.0);
             if ui
                 .add_sized(
                     [DIMENSIONS, DIMENSIONS],
                     egui::ImageButton::new(egui::include_image!("../../assets/contacts.png"))
                         .rounding(5.0)
-                        .selected(self.side_panel_selected == side_panel_selected),
+                        .selected(self.side_panel_active == side_panel_active),
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_selected, CentralPanelState::ContactMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::ContactMain);
             };
-            let side_panel_selected = SidePanel::Settings;
+            let side_panel_active = SidePanel::Settings;
             ui.add_space(10.0);
             if ui
                 .add_sized(
                     [DIMENSIONS, DIMENSIONS],
                     egui::ImageButton::new(egui::include_image!("../../assets/settings.png"))
                         .rounding(5.0)
-                        .selected(self.side_panel_selected == side_panel_selected),
+                        .selected(self.side_panel_active == side_panel_active),
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_selected, CentralPanelState::SettingsMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::SettingsMain);
             };
         });
     }
 
     pub fn side_panel_set_state(
         &mut self,
-        side_panel_selected: SidePanel,
+        side_panel_active: SidePanel,
         central_panel_state: CentralPanelState,
     ) {
-        self.side_panel_selected = side_panel_selected;
+        self.side_panel_active = side_panel_active;
         self.central_panel_state = central_panel_state;
     }
 

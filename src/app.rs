@@ -11,30 +11,32 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
-const PASSWORD_NEEDED_TIMEOUT_S: i64 = 5;
+const PASSWORD_NEEDED_TIMEOUT_S: i64 = 2;
 use chrono::{DateTime, Duration};
 
 use egui::InnerResponse;
 use std::num::ParseIntError;
 #[derive(PartialEq, Clone)]
-enum CentralPanelState {
+pub enum CentralPanelState {
     WalletFileNotAvailable,
     NoWalletsInWalletFile { mnemonic_string: String },
     WalletNotInitialised,
-    PasswordNeeded { next_state: Box<CentralPanelState> },
+    PasswordNeeded { destination: Box<CentralPanelState> },
     WalletMain,
     SendingMain,
     ReceivingMain,
     ContactMain,
     SettingsMain,
-    WalletDelete,
+    WalletDelete { pub_key: String },
     WalletRename,
     WalletSecret,
+    WalletNewWallet { mnemonic_string: String },
+    WalletExistingWallet,
     SettingsChangePassword,
 }
 
 #[derive(PartialEq)]
-enum SidePanel {
+pub enum SidePanel {
     Wallet,
     Sending,
     Receiving,
@@ -57,17 +59,14 @@ pub struct DialogLineEdit {
 pub enum DialogBoxEnum {
     IncorrectMnemonic,
     WalletCreated,
-    ChangeWalletName,
     ConfirmSend,
     InvalidTransaction,
     ChangeContactName { pub_key: String },
-    ShowMnemonic,
-    DeleteWallet,
 }
 
 pub struct MyApp {
     central_panel_state: CentralPanelState,
-    side_panel_selected: SidePanel,
+    side_panel_active: SidePanel,
     wallet_model: WalletModel,
     sync_data_receiver: mpsc::Receiver<SyncData>,
     sync_data_sender: mpsc::Sender<SyncData>,
@@ -96,16 +95,6 @@ impl MyApp {
                     .rename_wallet(EntryType::Contact, pub_key, &wallet_name);
             }
 
-            DialogBoxEnum::ChangeWalletName => {
-                let new_wallet_name = &edited_lines[0];
-
-                let selected_priv_key = self.wallet_model.get_selected_wallet_string();
-                let _ = self.wallet_model.rename_wallet(
-                    EntryType::Wallet,
-                    &selected_priv_key,
-                    &new_wallet_name,
-                );
-            }
             DialogBoxEnum::ConfirmSend { .. } => {
                 let recipient_addr = self.recipient_address_string.clone();
                 let amount = (&self.amount_to_send_string).parse().unwrap();
@@ -155,7 +144,7 @@ impl MyApp {
 impl MyApp {
     pub fn new() -> Self {
         let central_panel_state = CentralPanelState::WalletFileNotAvailable;
-        let side_panel_selected = SidePanel::Wallet;
+        let side_panel_active = SidePanel::Wallet;
         let wallet_model = WalletModel::new(FILENAME);
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
         let rename_wallet_string = String::new();
@@ -168,9 +157,10 @@ impl MyApp {
         let confirm_mnemonic_string = String::new();
         let last_interaction_time = chrono::offset::Local::now();
         let string_scratchpad = [String::new(), String::new(), String::new()];
+
         let slf = Self {
             central_panel_state: central_panel_state,
-            side_panel_selected: side_panel_selected,
+            side_panel_active: side_panel_active,
             wallet_model: wallet_model,
             sync_data_sender: sync_data_sender,
             sync_data_receiver: sync_data_receiver,
@@ -195,7 +185,7 @@ impl eframe::App for MyApp {
         encryption_test();
         self.update_wallet_state();
 
-        if let Some(_private_key) = &self.wallet_model.selected_wallet {
+        if let Some(_pub_key) = &self.wallet_model.active_wallet {
             self.wallet_poll();
         }
 
@@ -220,7 +210,7 @@ impl MyApp {
         let result: Result<u64, ParseIntError> = self.amount_to_send_string.parse();
         match result {
             Ok(amount) => {
-                let total = self.wallet_model.get_selected_wallet_data().get_total();
+                let total = self.wallet_model.get_active_wallet_data().get_total();
                 if amount > total {
                     valid = false;
                     invalid_transaction_vec
@@ -237,13 +227,13 @@ impl MyApp {
     }
 
     fn is_own_address(&mut self) -> bool {
-        let address = self.wallet_model.get_selected_wallet_string();
+        let address = self.wallet_model.get_active_wallet_string();
 
         return self.recipient_address_string == address;
     }
 
     fn wallet_poll(&mut self) {
-        let selected_wallet_priv_key = self.wallet_model.get_selected_wallet_string();
+        let active_wallet_priv_key = self.wallet_model.get_active_wallet_string();
 
         let sync_data_channel_clone = self.sync_data_sender.clone();
 
@@ -273,7 +263,7 @@ impl MyApp {
             .active_threads
             .lock()
             .unwrap()
-            .contains_key(&selected_wallet_priv_key)
+            .contains_key(&active_wallet_priv_key)
         {
             return;
         }
@@ -283,7 +273,7 @@ impl MyApp {
         self.active_threads
             .lock()
             .unwrap()
-            .insert(selected_wallet_priv_key, handle);
+            .insert(active_wallet_priv_key, handle);
     }
 }
 
@@ -293,7 +283,7 @@ impl MyApp {
             CentralPanelState::WalletNotInitialised => {
                 if self.wallet_model.key.is_none() {
                     Some(CentralPanelState::PasswordNeeded {
-                        next_state: Box::new(CentralPanelState::WalletNotInitialised),
+                        destination: Box::new(CentralPanelState::WalletNotInitialised),
                     })
                 } else {
                     self.wallet_model.initialise_from_wallet_file().unwrap();
@@ -338,7 +328,7 @@ impl MyApp {
             > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
         {
             self.central_panel_state = CentralPanelState::PasswordNeeded {
-                next_state: Box::new(self.central_panel_state.clone()),
+                destination: Box::new(self.central_panel_state.clone()),
             };
         }
         self.last_interaction_time = current_time;

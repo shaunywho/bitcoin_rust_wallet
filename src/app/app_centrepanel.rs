@@ -1,23 +1,28 @@
 use crate::{
-    bitcoin_wallet::{generate_qrcode_from_address, get_transaction_details, TransactionDirection},
+    bitcoin_wallet::{
+        generate_mnemonic_string, generate_qrcode_from_address, get_transaction_details,
+        TransactionDirection,
+    },
     wallet_file_manager::EntryType,
 };
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
-use super::{CentralPanelState, DialogBox, DialogBoxEnum, DialogLineEdit, MyApp, SidePanel};
+use super::{CentralPanelState, DialogBox, DialogBoxEnum, DialogLineEdit, MyApp};
 
 use chrono::prelude::*;
 
 use zxcvbn::zxcvbn;
 
 impl MyApp {
-    pub fn render_wallet_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
-        let wallet = self.wallet_model.get_selected_wallet_data();
+    pub fn render_wallet_main_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        let wallet = self.wallet_model.get_active_wallet_data();
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
             ui.heading(&wallet.wallet_name.to_owned());
@@ -34,53 +39,29 @@ impl MyApp {
                     ui.selectable_value(&mut selected, 3, "Third");
                 });
             if ui.button("Show Mnemonic").clicked() {
-                self.central_panel_state = CentralPanelState::WalletSecret;
+                self.change_state(CentralPanelState::WalletSecret);
             }
             if ui.button("Rename Wallet").clicked() {
-                self.rename_wallet_string = wallet.wallet_name.to_string();
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::ChangeWalletName,
-                    title: "Change Wallet Name",
-                    dialog_line_edit: Vec::from([DialogLineEdit {
-                        message: Some("Enter new wallet name".into()),
-                        line_edit: Some(self.rename_wallet_string.clone()),
-                    }]),
-
-                    optional: true,
-                });
+                self.change_state(CentralPanelState::WalletRename);
             }
             if ui.button("Delete Wallet").clicked() {
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::DeleteWallet,
-                    title: "Delete Wallet",
-                    dialog_line_edit: Vec::from([DialogLineEdit {
-                        message: Some("Are you sure you want to delete this wallet?".to_string()),
-                        line_edit: None,
-                    }]),
-
-                    optional: true,
-                });
+                self.change_state(CentralPanelState::WalletDelete {
+                    pub_key: self.wallet_model.get_active_wallet_string(),
+                })
             }
             if ui.button("Add New Wallet").clicked() {
-                self.confirm_mnemonic_string = String::new();
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::DeleteWallet,
-                    title: "Delete Wallet",
-                    dialog_line_edit: Vec::from([DialogLineEdit {
-                        message: Some("Are you sure you want to delete this wallet?".to_string()),
-                        line_edit: None,
-                    }]),
-
-                    optional: true,
-                });
+                let mnemonic_string = generate_mnemonic_string().unwrap();
+                self.change_state(CentralPanelState::WalletNewWallet {
+                    mnemonic_string: mnemonic_string,
+                })
             }
             if ui.button("Add Existing Wallet").clicked() {
-                //                         //
+                self.change_state(CentralPanelState::WalletExistingWallet)
             }
         });
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_model.get_selected_wallet_data();
+            let wallet = self.wallet_model.get_active_wallet_data();
             ui.add_space(10.0);
             ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
             ui.add_space(50.0);
@@ -105,7 +86,7 @@ impl MyApp {
                     });
                 })
                 .body(|mut body| {
-                    let wallet = self.wallet_model.get_selected_wallet_data();
+                    let wallet = self.wallet_model.get_active_wallet_data();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
                         for transaction_details in transactions.iter() {
                             let (
@@ -181,16 +162,18 @@ impl MyApp {
                 });
         });
     }
-    pub fn render_sending_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
+    pub fn render_sending_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
             ui.heading(format!(
                 "Wallet Balance: {:?}",
-                self.wallet_model.get_selected_wallet_data().get_total()
+                self.wallet_model.get_active_wallet_data().get_total()
             ));
             ui.add_space(50.0);
 
@@ -239,25 +222,27 @@ impl MyApp {
         });
     }
 
-    pub fn render_receiving_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
+    pub fn render_receiving_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.add_space(20.0);
-        let wallet = self.wallet_model.get_selected_wallet_data();
-        let public_key = &wallet.pub_key;
+        let wallet = self.wallet_model.get_active_wallet_data();
+        let pub_key = wallet.pub_key;
         ui.vertical_centered(|ui| {
             // Encode some data into bits.
             ui.heading("Public Key");
             ui.add_space(10.0);
 
-            ui.heading(public_key);
+            ui.heading(&pub_key);
             ui.add_space(10.0);
 
             let img = ui.ctx().load_texture(
                 "my-image",
-                generate_qrcode_from_address(&public_key).unwrap(),
+                generate_qrcode_from_address(&pub_key).unwrap(),
                 Default::default(),
             );
 
@@ -265,16 +250,18 @@ impl MyApp {
 
             ui.add_space(10.0);
             if ui.button("Copy Public Key").clicked() {
-                ui.output_mut(|o| o.copied_text = public_key.clone());
+                ui.output_mut(|o| o.copied_text = pub_key);
             }
         });
     }
 
-    pub fn render_contacts_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
+    pub fn render_contacts_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.add_space(20.0);
 
         ui.vertical_centered(|ui| {
@@ -341,7 +328,15 @@ impl MyApp {
         });
     }
 
-    pub fn render_create_wallet_panel(&mut self, ui: &mut Ui, mnemonic_string: &str) {
+    pub fn render_new_wallet_creation(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+        mnemonic_string: &str,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.vertical_centered(|ui| {
             ui.add_space(50.0);
             ui.heading("Write down the following mnemonic");
@@ -355,10 +350,10 @@ impl MyApp {
             ui.add_space(20.0);
             ui.label("Type and confirm the mnemonic above");
             ui.add_space(10.0);
-            ui.text_edit_singleline(&mut self.confirm_mnemonic_string);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
             ui.add_space(10.0);
             if ui.button("Confirm").clicked() {
-                if self.confirm_mnemonic_string == mnemonic_string {
+                if self.string_scratchpad[0] == mnemonic_string {
                     self.wallet_model
                         .add_wallet(&mnemonic_string, "New Wallet Name")
                         .unwrap();
@@ -371,7 +366,8 @@ impl MyApp {
                         }]),
                         optional: false,
                     });
-                    self.central_panel_state = CentralPanelState::WalletNotInitialised;
+                    self.change_state(destination);
+                    self.clear_string_scratchpad();
                 } else {
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
@@ -386,27 +382,65 @@ impl MyApp {
             }
         });
     }
-    pub fn render_create_password_panel(&mut self, ui: &mut Ui, destination: CentralPanelState) {
+
+    pub fn render_new_wallet_existing(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("Type in the mnemonic for an existing wallet");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            if ui.button("Confirm").clicked() {
+                self.wallet_model
+                    .add_wallet(&self.string_scratchpad[0], "New Wallet Name")
+                    .unwrap();
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::WalletCreated,
+                    title: "Wallet Added",
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                });
+                self.change_state(destination);
+            }
+        });
+    }
+
+    pub fn render_create_password_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.vertical_centered(|ui| {
             ui.add_space(50.0);
             ui.label("Type New Password");
             let password_entry =
-                egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
+                egui::TextEdit::singleline(&mut self.string_scratchpad[0]).password(true);
 
             ui.add(password_entry);
             ui.add_space(20.0);
             ui.label("Confirm Password");
             let password_entry_confirmation =
-                egui::TextEdit::singleline(&mut self.password_entry_confirmation_string)
-                    .password(true);
+                egui::TextEdit::singleline(&mut self.string_scratchpad[1]).password(true);
             ui.add(password_entry_confirmation);
             let mut password_strength = 0;
 
-            if let Ok(password_strength_estimate) = zxcvbn(&self.password_entry_string, &[]) {
+            if let Ok(password_strength_estimate) = zxcvbn(&self.string_scratchpad[0], &[]) {
                 password_strength = password_strength_estimate.score();
             }
 
-            if self.password_entry_string != self.password_entry_confirmation_string {
+            if self.string_scratchpad[0] != self.string_scratchpad[1] {
                 ui.add_space(30.0);
                 ui.label("Passwords not the same");
             } else {
@@ -428,32 +462,27 @@ impl MyApp {
                 ui.add_space(30.0);
                 if ui.button("Enter").clicked() {
                     self.wallet_model
-                        .create_passworded_file(self.password_entry_string.clone())
+                        .create_passworded_file(self.string_scratchpad[0].clone())
                         .unwrap();
 
-                    self.central_panel_state = destination;
+                    self.change_state(destination);
                 }
             };
         });
     }
 
-    pub fn render_update_password_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
-        self.render_create_password_panel(ui, CentralPanelState::SettingsMain);
-
-        if ui.button("Back").clicked() {
-            self.central_panel_state = CentralPanelState::SettingsMain;
-        }
-    }
-
-    pub fn render_enter_password_panel(&mut self, ui: &mut Ui, destination: CentralPanelState) {
+    pub fn render_enter_password_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
             let password_entry =
-                egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
+                egui::TextEdit::singleline(&mut self.string_scratchpad[0]).password(true);
             ui.heading("Enter Password");
             ui.add_space(20.0);
             ui.add(password_entry);
@@ -462,42 +491,68 @@ impl MyApp {
             if ui.button("Enter").clicked() {
                 if self
                     .wallet_model
-                    .validate_password(&self.password_entry_string)
+                    .validate_password(&self.string_scratchpad[0])
                 {
-                    self.central_panel_state = destination;
+                    self.initialise_last_interaction_time();
+                    self.change_state(destination);
                 } else {
-                    self.password_entry_string = String::new();
+                    self.clear_string_scratchpad();
                 }
             }
         });
     }
 
-    pub fn render_settings_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
-
+    pub fn render_settings_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         if ui.button("Change Password").clicked() {
-            self.central_panel_state = CentralPanelState::SettingsChangePassword;
+            self.change_state(CentralPanelState::SettingsChangePassword);
         }
     }
 
-    pub fn clear_string_scratchpad(&mut self) {
-        self.string_scratchpad = [String::new(), String::new(), String::new()];
-    }
+    pub fn render_delete_wallet_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        pub_key: String,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        let (entry_type, wallet) = self.wallet_model.get_wallet_data(&pub_key);
+        let wallet_name = wallet.wallet_name.clone();
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
 
-    pub fn render_delete_wallet_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
+            ui.heading(format!(
+                "Are you sure you want to delete wallet {}, public key: {}",
+                wallet_name, pub_key
+            ));
+            if ui.button("Confirm").clicked() {
+                match entry_type {
+                    EntryType::Wallet => {
+                        self.wallet_model.delete_wallet(&pub_key);
+                        self.change_state(CentralPanelState::WalletMain);
+                    }
+                    EntryType::Contact => {
+                        self.wallet_model.delete_contact(&pub_key);
+                        self.change_state(CentralPanelState::ContactMain);
+                    }
+                }
+            }
+        });
     }
-    pub fn render_rename_wallet_panel(&mut self, ui: &mut Ui, pub_key: String) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
+    pub fn render_rename_wallet_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        pub_key: String,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.vertical_centered(|ui| {
             let (entry_type, wallet) = self.wallet_model.get_wallet_data(&pub_key);
 
@@ -519,46 +574,28 @@ impl MyApp {
             if ui.button("Confirm").clicked() {
                 self.wallet_model
                     .rename_wallet(entry_type, &pub_key, &self.string_scratchpad[0]);
-                self.clear_string_scratchpad();
                 match entry_type {
-                    EntryType::Wallet => self.central_panel_state = CentralPanelState::WalletMain,
-                    EntryType::Contact => self.central_panel_state = CentralPanelState::ContactMain,
+                    EntryType::Wallet => self.change_state(CentralPanelState::WalletMain),
+                    EntryType::Contact => self.change_state(CentralPanelState::ContactMain),
                 }
             }
-            if ui.button("Back").clicked() {
-                self.clear_string_scratchpad();
-                match entry_type {
-                    EntryType::Wallet => self.central_panel_state = CentralPanelState::WalletMain,
-                    EntryType::Contact => self.central_panel_state = CentralPanelState::ContactMain,
-                }
-            }
-            //         self.dialog_box = Some(DialogBox {
-            //             dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
-            //             title: "Incorrect Mnemonic",
-            //             dialog_line_edit: Vec::from([DialogLineEdit {
-            //                 message: Some("Check your entry and type in the mnemonic again".into()),
-            //                 line_edit: None,
-            //             }]),
-            //             optional: false,
-            //         })
-            //     }
-            // }
         });
     }
 
-    pub fn render_wallet_secret_panel(&mut self, ui: &mut Ui) {
-        if let Some(_) = self.dialog_box {
-            ui.set_enabled(false);
-        }
-        self.password_needed_watchdog_timer();
-
+    pub fn render_wallet_secret_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_model.get_selected_wallet_data();
+            let wallet = self.wallet_model.get_active_wallet_data();
             let mnemonic_string = wallet.mnemonic.unwrap();
             let priv_key = wallet.priv_key.unwrap();
             ui.add_space(50.0);
             ui.heading("Mnemonic");
-            ui.add_space(50.0);
+            ui.add_space(20.0);
 
             ui.strong(&mnemonic_string);
             if ui.button("Copy Mnemonic").clicked() {
@@ -566,48 +603,106 @@ impl MyApp {
             }
             ui.add_space(20.0);
             ui.heading("Private Key");
-            ui.add_space(50.0);
+            ui.add_space(20.0);
+            ui.strong(&priv_key);
             if ui.button("Copy Private Key").clicked() {
-                ui.output_mut(|o| o.copied_text = priv_key.to_string());
-            }
-            if ui.button("Back").clicked() {
-                self.central_panel_state = CentralPanelState::WalletMain;
+                ui.output_mut(|o| o.copied_text = priv_key);
             }
         });
     }
 
+    pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
+            CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(
+                ui,
+                false,
+                None,
+                CentralPanelState::WalletNotInitialised,
+            ),
+            CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => self
+                .render_new_wallet_creation(
+                    ui,
+                    false,
+                    None,
+                    CentralPanelState::WalletNotInitialised,
+                    &mnemonic_string.clone(),
+                ),
+            CentralPanelState::WalletNotInitialised => {}
+            CentralPanelState::PasswordNeeded { destination } => {
+                self.render_enter_password_panel(ui, false, None, *destination.clone())
+            }
+            CentralPanelState::WalletMain => self.render_wallet_main_panel(ui, true, None),
+            CentralPanelState::SendingMain => self.render_sending_panel(ui, true, None),
+            CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
+            CentralPanelState::ContactMain => self.render_contacts_panel(ui, true, None),
+            CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
+            CentralPanelState::WalletDelete { pub_key } => self.render_delete_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                pub_key.to_string(),
+            ),
+            CentralPanelState::WalletRename => self.render_rename_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                self.wallet_model.get_active_wallet_data().pub_key,
+            ),
+
+            CentralPanelState::WalletSecret => {
+                self.render_wallet_secret_panel(ui, true, Some(CentralPanelState::WalletMain))
+            }
+            CentralPanelState::SettingsChangePassword => self.render_create_password_panel(
+                ui,
+                true,
+                Some(CentralPanelState::SettingsMain),
+                CentralPanelState::SettingsChangePassword,
+            ),
+
+            CentralPanelState::WalletNewWallet { mnemonic_string } => self
+                .render_new_wallet_creation(
+                    ui,
+                    true,
+                    Some(CentralPanelState::WalletMain),
+                    CentralPanelState::WalletMain,
+                    &mnemonic_string.clone(),
+                ),
+            CentralPanelState::WalletExistingWallet => self.render_new_wallet_existing(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                CentralPanelState::WalletMain,
+            ),
+        });
+    }
+    pub fn clear_string_scratchpad(&mut self) {
+        self.string_scratchpad = [String::new(), String::new(), String::new()];
+    }
     pub fn initialise_last_interaction_time(&mut self) {
         self.last_interaction_time = chrono::offset::Local::now();
     }
 
-    pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let width = ui.available_width();
-            match &self.central_panel_state {
-                CentralPanelState::WalletFileNotAvailable => {
-                    self.render_create_password_panel(ui, CentralPanelState::WalletNotInitialised)
-                }
-                CentralPanelState::NoWalletsInWalletFile {
-                    mnemonic_string: mnemonic_string,
-                } => self.render_create_wallet_panel(ui, &mnemonic_string.clone()),
-                CentralPanelState::WalletNotInitialised => {}
-                CentralPanelState::PasswordNeeded { next_state: state } => {
-                    self.render_enter_password_panel(ui, *state.clone())
-                }
-                CentralPanelState::WalletMain => self.render_wallet_panel(ui),
-                CentralPanelState::SendingMain => self.render_sending_panel(ui),
-                CentralPanelState::ReceivingMain => self.render_receiving_panel(ui),
-                CentralPanelState::ContactMain => self.render_contacts_panel(ui),
-                CentralPanelState::SettingsMain => self.render_settings_panel(ui),
-                CentralPanelState::WalletDelete => self.render_delete_wallet_panel(ui),
-                CentralPanelState::WalletRename => self.render_rename_wallet_panel(
-                    ui,
-                    self.wallet_model.get_selected_wallet_data().pub_key,
-                ),
+    pub fn change_state(&mut self, state: CentralPanelState) {
+        self.clear_string_scratchpad();
+        self.central_panel_state = state;
+    }
 
-                CentralPanelState::WalletSecret => self.render_wallet_secret_panel(ui),
-                CentralPanelState::SettingsChangePassword => self.render_update_password_panel(ui),
+    pub fn boiler_plate_render(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: &Option<CentralPanelState>,
+    ) {
+        if let Some(_) = self.dialog_box {
+            ui.set_enabled(false);
+        }
+        if watch {
+            self.password_needed_watchdog_timer();
+        }
+        if let Some(source) = source.clone() {
+            if ui.button("Back").clicked() {
+                self.change_state(source);
             }
-        });
+        }
     }
 }
