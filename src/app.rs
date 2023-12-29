@@ -11,30 +11,30 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
-const PASSWORD_NEEDED_TIMEOUT_S: i64 = 60;
+const PASSWORD_NEEDED_TIMEOUT_S: i64 = 5;
 use chrono::{DateTime, Duration};
 
 use egui::InnerResponse;
 use std::num::ParseIntError;
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum CentralPanelState {
     WalletFileNotAvailable,
-    NoWalletsInWalletFile {
-        mnemonic_string: String,
-    },
+    NoWalletsInWalletFile { mnemonic_string: String },
     WalletNotInitialised,
-    PasswordNeeded,
-    // PasswordEntered,
-    WalletAvailable {
-        last_interaction_time: DateTime<chrono::Local>,
-    },
-    DeleteWallet,
-    RenameWallet,
-    ShowSecret,
+    PasswordNeeded { next_state: Box<CentralPanelState> },
+    WalletMain,
+    SendingMain,
+    ReceivingMain,
+    ContactMain,
+    SettingsMain,
+    WalletDelete,
+    WalletRename,
+    WalletSecret,
+    SettingsChangePassword,
 }
 
 #[derive(PartialEq)]
-enum SidePanelState {
+enum SidePanel {
     Wallet,
     Sending,
     Receiving,
@@ -67,18 +67,20 @@ pub enum DialogBoxEnum {
 
 pub struct MyApp {
     central_panel_state: CentralPanelState,
-    side_panel_state: SidePanelState,
+    side_panel_selected: SidePanel,
     wallet_model: WalletModel,
     sync_data_receiver: mpsc::Receiver<SyncData>,
     sync_data_sender: mpsc::Sender<SyncData>,
     active_threads: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     rename_wallet_string: String,
+    string_scratchpad: [String; 3],
     recipient_address_string: String,
     amount_to_send_string: String,
     password_entry_string: String,
     password_entry_confirmation_string: String,
     dialog_box: Option<DialogBox>,
     confirm_mnemonic_string: String,
+    last_interaction_time: DateTime<chrono::Local>,
 }
 
 impl MyApp {
@@ -153,7 +155,7 @@ impl MyApp {
 impl MyApp {
     pub fn new() -> Self {
         let central_panel_state = CentralPanelState::WalletFileNotAvailable;
-        let side_panel_state = SidePanelState::Wallet;
+        let side_panel_selected = SidePanel::Wallet;
         let wallet_model = WalletModel::new(FILENAME);
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
         let rename_wallet_string = String::new();
@@ -164,22 +166,24 @@ impl MyApp {
         let dialog_box = None;
         let active_threads = Arc::new(Mutex::new(HashMap::new()));
         let confirm_mnemonic_string = String::new();
-
+        let last_interaction_time = chrono::offset::Local::now();
+        let string_scratchpad = [String::new(), String::new(), String::new()];
         let slf = Self {
-            central_panel_state,
-            side_panel_state,
-            wallet_model,
-            sync_data_sender,
-            sync_data_receiver,
-            active_threads,
-            rename_wallet_string,
-            recipient_address_string,
-            amount_to_send_string,
-            password_entry_string,
-            password_entry_confirmation_string,
-            dialog_box,
-
-            confirm_mnemonic_string,
+            central_panel_state: central_panel_state,
+            side_panel_selected: side_panel_selected,
+            wallet_model: wallet_model,
+            sync_data_sender: sync_data_sender,
+            sync_data_receiver: sync_data_receiver,
+            active_threads: active_threads,
+            rename_wallet_string: rename_wallet_string,
+            recipient_address_string: recipient_address_string,
+            amount_to_send_string: amount_to_send_string,
+            password_entry_string: password_entry_string,
+            password_entry_confirmation_string: password_entry_confirmation_string,
+            dialog_box: dialog_box,
+            confirm_mnemonic_string: confirm_mnemonic_string,
+            last_interaction_time: last_interaction_time,
+            string_scratchpad: string_scratchpad,
         };
 
         slf
@@ -255,7 +259,7 @@ impl MyApp {
                 }
             });
             let _ = self.wallet_model.sync_wallet(
-                &sync_data.priv_key,
+                &sync_data.pub_key,
                 Some(sync_data.balance),
                 Some(sync_data.transactions),
             );
@@ -288,7 +292,9 @@ impl MyApp {
         let new_state = match &self.central_panel_state {
             CentralPanelState::WalletNotInitialised => {
                 if self.wallet_model.key.is_none() {
-                    Some(CentralPanelState::PasswordNeeded)
+                    Some(CentralPanelState::PasswordNeeded {
+                        next_state: Box::new(CentralPanelState::WalletNotInitialised),
+                    })
                 } else {
                     self.wallet_model.initialise_from_wallet_file().unwrap();
                     if self.wallet_model.json_wallet_data.wallets.is_empty() {
@@ -296,9 +302,8 @@ impl MyApp {
                             mnemonic_string: generate_mnemonic_string().unwrap(),
                         })
                     } else {
-                        Some(CentralPanelState::WalletAvailable {
-                            last_interaction_time: chrono::offset::Local::now(),
-                        })
+                        self.initialise_last_interaction_time();
+                        Some(CentralPanelState::WalletMain)
                     }
                 }
             }
@@ -309,20 +314,7 @@ impl MyApp {
                     None
                 }
             }
-            CentralPanelState::WalletAvailable {
-                last_interaction_time,
-            } => {
-                let current_time = chrono::offset::Local::now();
-                if (current_time - last_interaction_time)
-                    > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
-                {
-                    Some(CentralPanelState::PasswordNeeded)
-                } else {
-                    Some(CentralPanelState::WalletAvailable {
-                        last_interaction_time: current_time,
-                    })
-                }
-            }
+
             _ => None,
         };
 
@@ -332,34 +324,23 @@ impl MyApp {
     }
 
     fn render_window(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let enabled: bool;
-
-        match (&self.dialog_box, &self.central_panel_state) {
-            (
-                Some(_),
-                CentralPanelState::WalletAvailable {
-                    last_interaction_time: _,
-                },
-            ) => {
-                self.render_dialog_box(ctx);
-                enabled = false;
-            }
-            (
-                None,
-                CentralPanelState::WalletAvailable {
-                    last_interaction_time: _,
-                },
-            ) => {
-                enabled = true;
-            }
-            (_, _) => {
-                self.dialog_box = None;
-                enabled = false;
-            }
+        if let Some(_) = self.dialog_box {
+            self.render_dialog_box(ctx);
         }
+        self.render_sidepanel(ctx, _frame);
+        self.render_toppanel(ctx, _frame);
+        self.render_centrepanel(ctx, _frame);
+    }
 
-        self.render_sidepanel(enabled, ctx, _frame);
-        self.render_toppanel(enabled, ctx, _frame);
-        self.render_centrepanel(enabled, ctx, _frame);
+    fn password_needed_watchdog_timer(&mut self) {
+        let current_time = chrono::offset::Local::now();
+        if (current_time - self.last_interaction_time)
+            > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
+        {
+            self.central_panel_state = CentralPanelState::PasswordNeeded {
+                next_state: Box::new(self.central_panel_state.clone()),
+            };
+        }
+        self.last_interaction_time = current_time;
     }
 }

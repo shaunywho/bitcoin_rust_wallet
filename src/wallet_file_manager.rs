@@ -45,6 +45,7 @@ pub struct JsonWallet {
     pub balance: Option<Balance>,
     pub sorted_transactions: Option<Vec<TransactionDetails>>,
 }
+#[derive(Copy, Clone)]
 pub enum EntryType {
     Wallet,
     Contact,
@@ -53,7 +54,7 @@ pub enum EntryType {
 const FILENAME: &str = "./wallet.txt";
 
 pub struct SyncData {
-    pub priv_key: String,
+    pub pub_key: String,
     pub balance: Balance,
     pub transactions: Vec<TransactionDetails>,
 }
@@ -83,7 +84,7 @@ impl WalletModel {
         sync_sender: Sender<SyncData>,
     ) -> JoinHandle<()> {
         let blockchain = Arc::clone(&self.blockchain);
-        let priv_key = self.get_selected_wallet_string();
+        let pub_key = self.get_selected_wallet_string();
         let handle = thread::spawn(move || {
             let wallet_locked = wallet.lock().unwrap();
             wallet_locked
@@ -93,7 +94,7 @@ impl WalletModel {
             let balance = wallet_locked.get_balance().unwrap();
             let transactions = wallet_locked.list_transactions(true).unwrap();
             let sync_data = SyncData {
-                priv_key,
+                pub_key,
                 balance,
                 transactions,
             };
@@ -161,13 +162,14 @@ impl WalletModel {
 
         for wallet in self.json_wallet_data.wallets.iter() {
             let priv_key = wallet.priv_key.clone().unwrap();
+            let pub_key = wallet.pub_key.clone();
             self.wallet_objs.insert(
-                priv_key.clone(),
+                pub_key,
                 Arc::new(Mutex::new(generate_wallet(&priv_key).unwrap())),
             );
         }
         if self.json_wallet_data.wallets.len() > 0 {
-            self.selected_wallet = Some(self.get_first_wallet_xpriv_str());
+            self.selected_wallet = Some(self.get_first_wallet_pub_key());
         }
         Ok(())
     }
@@ -200,30 +202,34 @@ impl WalletModel {
         Ok(())
     }
 
-    pub fn add_wallet(&mut self, mnemonic: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_wallet(
+        &mut self,
+        mnemonic: &str,
+        wallet_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let priv_key = generate_xpriv(mnemonic).unwrap().to_string();
+        let wallet = generate_wallet(&priv_key).unwrap();
+        let pub_key = &wallet
+            .get_address(AddressIndex::Peek(0))
+            .unwrap()
+            .to_string();
         if self
             .json_wallet_data
             .wallets
             .iter()
-            .any(|wallet| wallet.priv_key == Some(priv_key.to_owned()))
+            .any(|wallet| &wallet.pub_key == pub_key)
         {
             panic!("Wallet already exists");
         } else {
-            let wallet_name = "New Wallet Name";
-            let wallet = generate_wallet(&priv_key).unwrap();
             self.append_to_file(
                 Some(priv_key.to_string()),
                 Some(mnemonic.to_string()),
-                &wallet
-                    .get_address(AddressIndex::Peek(0))
-                    .unwrap()
-                    .to_string(),
+                pub_key,
                 wallet_name,
             )?;
             self.wallet_objs
-                .insert(priv_key.to_string(), Arc::new(Mutex::new(wallet)));
-            self.selected_wallet = Some(priv_key.to_string());
+                .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));
+            self.selected_wallet = Some(pub_key.to_string());
         }
 
         return Ok(());
@@ -276,13 +282,13 @@ impl WalletModel {
 
     pub fn sync_wallet(
         &mut self,
-        address: &str,
+        pub_key: &str,
         balance: Option<Balance>,
         transactions: Option<Vec<TransactionDetails>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_wallet_data(
             EntryType::Wallet,
-            address,
+            pub_key,
             None,
             balance,
             transactions.clone(),
@@ -301,12 +307,8 @@ impl WalletModel {
         return Ok(());
     }
 
-    pub fn get_first_wallet_xpriv_str(&mut self) -> String {
-        let first_wallet = self.json_wallet_data.wallets[0]
-            .priv_key
-            .clone()
-            .unwrap()
-            .to_string();
+    pub fn get_first_wallet_pub_key(&mut self) -> String {
+        let first_wallet = self.json_wallet_data.wallets[0].pub_key.clone().to_string();
         return first_wallet;
     }
 
@@ -342,7 +344,7 @@ impl WalletModel {
             .json_wallet_data
             .wallets
             .iter()
-            .find(|wallet| wallet.priv_key == Some(wallet_string.clone()))
+            .find(|wallet| wallet.pub_key == wallet_string.clone())
             .unwrap();
         return wallet_data.clone();
     }
@@ -350,7 +352,7 @@ impl WalletModel {
     fn set_wallet_data(
         &mut self,
         entry_type: EntryType,
-        address: &str,
+        pub_key: &str,
         wallet_name: Option<String>,
         balance: Option<Balance>,
         transactions: Option<Vec<TransactionDetails>>,
@@ -362,7 +364,7 @@ impl WalletModel {
                     .json_wallet_data
                     .wallets
                     .iter()
-                    .position(|wallet| wallet.priv_key == Some(address.to_string()))
+                    .position(|wallet| wallet.pub_key == pub_key)
                     .unwrap();
                 wallet = &mut self.json_wallet_data.wallets[index];
             }
@@ -371,7 +373,7 @@ impl WalletModel {
                     .json_wallet_data
                     .contacts
                     .iter()
-                    .position(|wallet| wallet.pub_key == address)
+                    .position(|wallet| wallet.pub_key == pub_key)
                     .unwrap();
                 wallet = &mut self.json_wallet_data.contacts[index];
             }
@@ -395,6 +397,22 @@ impl WalletModel {
         fs::write(&self.filename, encrypted_string)?;
 
         return Ok(());
+    }
+
+    pub fn get_wallet_data(&mut self, pub_key: &str) -> (EntryType, &mut JsonWallet) {
+        self.json_wallet_data
+            .wallets
+            .iter_mut()
+            .find(|wallet| wallet.pub_key == pub_key)
+            .map(|wallet| (EntryType::Wallet, wallet))
+            .unwrap_or_else(|| {
+                self.json_wallet_data
+                    .contacts
+                    .iter_mut()
+                    .find(|contact| contact.pub_key == pub_key)
+                    .map(|wallet| (EntryType::Contact, wallet))
+                    .expect("Wallet not found in contacts")
+            })
     }
 
     pub fn send_transaction(&mut self, recipient_address: &str, amount: u64) {

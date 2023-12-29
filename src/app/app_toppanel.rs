@@ -1,17 +1,11 @@
 use egui::InnerResponse;
 
-use super::{MyApp, SidePanelState};
+use super::{MyApp, SidePanel};
 impl MyApp {
-    pub fn render_toppanel(
-        &mut self,
-        enabled: bool,
-        ctx: &egui::Context,
-        _frame: &mut eframe::Frame,
-    ) {
+    pub fn render_toppanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("Headerbar")
             .exact_height(70.0)
             .show(ctx, |ui| {
-                ui.set_enabled(enabled);
                 if self.dialog_box.is_some() {
                     ui.set_enabled(false);
                 }
@@ -21,12 +15,12 @@ impl MyApp {
                     ui.heading("Rust Bitcoin Wallet");
 
                     ui.add_space(10.0);
-                    let title = match self.side_panel_state {
-                        SidePanelState::Wallet => "Wallet",
-                        SidePanelState::Sending => "Send Transaction",
-                        SidePanelState::Receiving => "Receive Transaction",
-                        SidePanelState::Contacts => "Contacts",
-                        SidePanelState::Settings => "Settings",
+                    let title = match self.side_panel_selected {
+                        SidePanel::Wallet => "Wallet",
+                        SidePanel::Sending => "Send Transaction",
+                        SidePanel::Receiving => "Receive Transaction",
+                        SidePanel::Contacts => "Contacts",
+                        SidePanel::Settings => "Settings",
                     };
                     ui.heading(title);
                 })
