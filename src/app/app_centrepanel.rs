@@ -1,7 +1,7 @@
 use crate::{
     bitcoin_wallet::{
         generate_mnemonic_string, generate_qrcode_from_address, generate_wallet, generate_xpriv,
-        get_transaction_details, TransactionDirection,
+        get_transaction_details, is_valid_bitcoin_address, TransactionDirection,
     },
     wallet_file_manager::EntryType,
 };
@@ -284,7 +284,7 @@ impl MyApp {
             ui.heading("Contact List");
             ui.add_space(10.0);
             if ui.button("Add Contact").clicked() {
-                //
+                self.change_state(CentralPanelState::ContactsNewContact);
             }
             ui.add_space(10.0);
             TableBuilder::new(ui)
@@ -464,6 +464,57 @@ impl MyApp {
         });
     }
 
+    pub fn render_new_contact(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("Public Key");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            ui.add_space(50.0);
+            ui.heading("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
+
+            if ui.button("Confirm").clicked() {
+                let valid_bitcoin_addr = is_valid_bitcoin_address(&self.string_scratchpad[0]);
+                let mut title = "Wallet Created";
+                if !valid_bitcoin_addr {
+                    title = "Invalid Bitcoin Address";
+                }
+                let wallet_in_use = self
+                    .wallet_model
+                    .contains_wallet(&self.string_scratchpad[0]);
+                if wallet_in_use {
+                    title = "Wallet already stored";
+                }
+                let title = match (valid_bitcoin_addr, wallet_in_use) {
+                    (true, false) => {
+                        self.change_state(destination);
+                        "Wallet Created"
+                    }
+                    (true, true) => "Wallet Already Stored",
+                    (false, _) => "Invalid Bitcoin Address",
+                };
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::WalletCreated,
+                    title: title,
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                });
+            }
+        });
+    }
+
     pub fn render_create_password_panel(
         &mut self,
         ui: &mut Ui,
@@ -590,7 +641,7 @@ impl MyApp {
                     }
                     EntryType::Contact => {
                         self.wallet_model.delete_contact(&pub_key);
-                        self.change_state(CentralPanelState::ContactMain);
+                        self.change_state(CentralPanelState::ContactsMain);
                     }
                 }
             }
@@ -627,7 +678,7 @@ impl MyApp {
                     .rename_wallet(entry_type, &pub_key, &self.string_scratchpad[0]);
                 match entry_type {
                     EntryType::Wallet => self.change_state(CentralPanelState::WalletMain),
-                    EntryType::Contact => self.change_state(CentralPanelState::ContactMain),
+                    EntryType::Contact => self.change_state(CentralPanelState::ContactsMain),
                 }
             }
         });
@@ -685,7 +736,7 @@ impl MyApp {
             CentralPanelState::WalletMain => self.render_wallet_main_panel(ui, true, None),
             CentralPanelState::SendingMain => self.render_sending_panel(ui, true, None),
             CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
-            CentralPanelState::ContactMain => self.render_contacts_panel(ui, true, None),
+            CentralPanelState::ContactsMain => self.render_contacts_panel(ui, true, None),
             CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
             CentralPanelState::WalletDelete { pub_key } => self.render_delete_wallet_panel(
                 ui,
@@ -723,6 +774,12 @@ impl MyApp {
                 true,
                 Some(CentralPanelState::WalletMain),
                 CentralPanelState::WalletMain,
+            ),
+            CentralPanelState::ContactsNewContact => self.render_new_contact(
+                ui,
+                true,
+                Some(CentralPanelState::ContactsMain),
+                CentralPanelState::ContactsMain,
             ),
         });
     }

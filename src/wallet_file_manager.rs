@@ -215,12 +215,7 @@ impl WalletModel {
         if wallet_name.len() == 0 {
             saved_wallet_name = &pub_key;
         }
-        if self
-            .json_wallet_data
-            .wallets
-            .iter()
-            .any(|wallet| wallet.pub_key == pub_key)
-        {
+        if self.contains_wallet(&pub_key) {
             panic!("Wallet already exists");
         } else {
             self.add_to_wallet(
@@ -283,13 +278,8 @@ impl WalletModel {
         pub_key: &str,
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if self
-            .json_wallet_data
-            .contacts
-            .iter()
-            .any(|wallet| wallet.pub_key == pub_key)
-        {
-            return Ok(());
+        if self.contains_wallet(&pub_key) {
+            panic!("Contact already exists");
         }
         self.add_to_wallet(None, None, pub_key, wallet_name);
 
@@ -335,14 +325,9 @@ impl WalletModel {
             transactions.clone(),
         )?;
         for transaction_details in transactions.clone().unwrap() {
-            let (_, address, _, _, _, _) = get_transaction_details(transaction_details);
-            if !self
-                .json_wallet_data
-                .wallets
-                .iter()
-                .any(|wallet| wallet.pub_key == address)
-            {
-                let _ = self.add_contact(&address, &address);
+            let (_, pub_key, _, _, _, _) = get_transaction_details(transaction_details);
+            if !self.contains_wallet(&pub_key) {
+                let _ = self.add_contact(&pub_key, &pub_key);
             }
         }
         return Ok(());
@@ -479,6 +464,21 @@ impl WalletModel {
                 return true;
             }
         }
+    }
+
+    pub fn contains_wallet(&self, pub_key: &str) -> bool {
+        let wallets_contain_wallet = self
+            .json_wallet_data
+            .wallets
+            .iter()
+            .any(|wallet| wallet.pub_key == pub_key);
+        let contacts_contain_wallet = self
+            .json_wallet_data
+            .contacts
+            .iter()
+            .any(|wallet| wallet.pub_key == pub_key);
+
+        return wallets_contain_wallet || contacts_contain_wallet;
     }
 }
 

@@ -60,7 +60,7 @@ impl MyApp {
                 )
                 .clicked()
             {
-                self.side_panel_set_state(side_panel_active, CentralPanelState::ContactMain);
+                self.side_panel_set_state(side_panel_active, CentralPanelState::ContactsMain);
             };
             let side_panel_active = SidePanel::Settings;
             ui.add_space(10.0);

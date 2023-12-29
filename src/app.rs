@@ -25,7 +25,7 @@ pub enum CentralPanelState {
     WalletMain,
     SendingMain,
     ReceivingMain,
-    ContactMain,
+    ContactsMain,
     SettingsMain,
     WalletDelete { pub_key: String },
     WalletRename,
@@ -33,6 +33,7 @@ pub enum CentralPanelState {
     WalletNewWallet { mnemonic_string: String },
     WalletExistingWallet,
     SettingsChangePassword,
+    ContactsNewContact,
 }
 
 #[derive(PartialEq)]
