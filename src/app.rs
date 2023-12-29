@@ -138,7 +138,7 @@ impl MyApp {
 
 impl MyApp {
     pub fn new() -> Self {
-        let central_panel_state = CentralPanelState::WalletFileNotAvailable;
+        let central_panel_state = CentralPanelState::WalletNotInitialised;
         let side_panel_active = SidePanel::Wallet;
         let wallet_model = WalletModel::new(FILENAME);
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
@@ -169,7 +169,6 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         encryption_test();
-        self.update_wallet_state();
 
         if let Some(_pub_key) = &self.wallet_model.active_wallet {
             self.wallet_poll();
@@ -268,41 +267,6 @@ impl MyApp {
 }
 
 impl MyApp {
-    fn update_wallet_state(&mut self) {
-        let new_state = match &self.central_panel_state {
-            CentralPanelState::WalletNotInitialised => {
-                if self.wallet_model.key.is_none() {
-                    Some(CentralPanelState::PasswordNeeded {
-                        destination: Box::new(CentralPanelState::WalletNotInitialised),
-                    })
-                } else {
-                    self.wallet_model.initialise_from_wallet_file().unwrap();
-                    if self.wallet_model.json_wallet_data.wallets.is_empty() {
-                        Some(CentralPanelState::NoWalletsInWalletFile {
-                            mnemonic_string: generate_mnemonic_string().unwrap(),
-                        })
-                    } else {
-                        self.initialise_last_interaction_time();
-                        Some(CentralPanelState::WalletMain)
-                    }
-                }
-            }
-            CentralPanelState::WalletFileNotAvailable => {
-                if self.wallet_model.does_file_exist() {
-                    Some(CentralPanelState::WalletNotInitialised)
-                } else {
-                    None
-                }
-            }
-
-            _ => None,
-        };
-
-        if let Some(state) = new_state {
-            self.central_panel_state = state;
-        }
-    }
-
     fn render_window(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some(_) = self.dialog_box {
             self.render_dialog_box(ctx);

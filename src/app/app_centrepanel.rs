@@ -644,7 +644,7 @@ impl MyApp {
                     CentralPanelState::WalletNotInitialised,
                     &mnemonic_string.clone(),
                 ),
-            CentralPanelState::WalletNotInitialised => {}
+            CentralPanelState::WalletNotInitialised => self.wallet_initialisation(),
             CentralPanelState::PasswordNeeded { destination } => {
                 self.render_enter_password_panel(ui, false, None, *destination.clone())
             }
@@ -692,6 +692,33 @@ impl MyApp {
             ),
         });
     }
+
+    pub fn wallet_initialisation(&mut self) {
+        if !self.wallet_model.does_file_exist() {
+            self.central_panel_state = CentralPanelState::WalletFileNotAvailable;
+            return;
+        }
+
+        if self.wallet_model.key.is_none() {
+            self.central_panel_state = CentralPanelState::PasswordNeeded {
+                destination: Box::new(CentralPanelState::WalletNotInitialised),
+            };
+            return;
+        } else {
+            self.wallet_model.initialise_from_wallet_file().unwrap();
+            if self.wallet_model.json_wallet_data.wallets.is_empty() {
+                self.central_panel_state = CentralPanelState::NoWalletsInWalletFile {
+                    mnemonic_string: generate_mnemonic_string().unwrap(),
+                };
+                return;
+            } else {
+                self.initialise_last_interaction_time();
+                self.central_panel_state = CentralPanelState::WalletMain;
+                return;
+            }
+        }
+    }
+
     pub fn clear_string_scratchpad(&mut self) {
         self.string_scratchpad = [String::new(), String::new(), String::new()];
     }
