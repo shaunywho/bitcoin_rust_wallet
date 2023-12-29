@@ -202,28 +202,32 @@ impl WalletModel {
 
     pub fn add_wallet(
         &mut self,
+        priv_key: &str,
         mnemonic: &str,
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let priv_key = generate_xpriv(mnemonic).unwrap().to_string();
         let wallet = generate_wallet(&priv_key).unwrap();
-        let pub_key = &wallet
+        let pub_key = wallet
             .get_address(AddressIndex::Peek(0))
             .unwrap()
             .to_string();
+        let mut saved_wallet_name = wallet_name;
+        if wallet_name.len() == 0 {
+            saved_wallet_name = &pub_key;
+        }
         if self
             .json_wallet_data
             .wallets
             .iter()
-            .any(|wallet| &wallet.pub_key == pub_key)
+            .any(|wallet| wallet.pub_key == pub_key)
         {
             panic!("Wallet already exists");
         } else {
             self.add_to_wallet(
                 Some(priv_key.to_string()),
                 Some(mnemonic.to_string()),
-                pub_key,
-                wallet_name,
+                &pub_key,
+                saved_wallet_name,
             )?;
             self.wallet_objs
                 .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));

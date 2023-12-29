@@ -1,7 +1,7 @@
 use crate::{
     bitcoin_wallet::{
-        generate_mnemonic_string, generate_qrcode_from_address, get_transaction_details,
-        TransactionDirection,
+        generate_mnemonic_string, generate_qrcode_from_address, generate_wallet, generate_xpriv,
+        get_transaction_details, TransactionDirection,
     },
     wallet_file_manager::EntryType,
 };
@@ -32,7 +32,7 @@ impl MyApp {
         ui.horizontal(|ui| {
             egui::ComboBox::from_label("Selected Wallet")
                 .selected_text(format!(
-                    "{:?}",
+                    "{}",
                     self.wallet_model.get_active_wallet_data().wallet_name
                 ))
                 .show_ui(ui, |ui| {
@@ -368,10 +368,17 @@ impl MyApp {
             ui.add_space(10.0);
             ui.text_edit_singleline(&mut self.string_scratchpad[0]);
             ui.add_space(10.0);
+            ui.label("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
             if ui.button("Confirm").clicked() {
                 if self.string_scratchpad[0] == mnemonic_string {
+                    let priv_key = generate_xpriv(&self.string_scratchpad[0])
+                        .unwrap()
+                        .to_string();
+
                     self.wallet_model
-                        .add_wallet(&mnemonic_string, "New Wallet Name")
+                        .add_wallet(&priv_key, &mnemonic_string, &self.string_scratchpad[1])
                         .unwrap();
                     self.dialog_box = Some(DialogBox {
                         dialog_box_enum: DialogBoxEnum::WalletCreated,
@@ -412,20 +419,47 @@ impl MyApp {
             ui.heading("Type in the mnemonic for an existing wallet");
             ui.add_space(20.0);
             ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            ui.add_space(50.0);
+            ui.heading("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
+
             if ui.button("Confirm").clicked() {
-                self.wallet_model
-                    .add_wallet(&self.string_scratchpad[0], "New Wallet Name")
-                    .unwrap();
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::WalletCreated,
-                    title: "Wallet Added",
-                    dialog_line_edit: Vec::from([DialogLineEdit {
-                        message: None,
-                        line_edit: None,
-                    }]),
-                    optional: false,
-                });
-                self.change_state(destination);
+                let result = generate_xpriv(&self.string_scratchpad[0]);
+                match result {
+                    Err(_) => {
+                        self.dialog_box = Some(DialogBox {
+                            dialog_box_enum: DialogBoxEnum::WalletCreated,
+                            title: "Mnemonic Incorrect",
+                            dialog_line_edit: Vec::from([DialogLineEdit {
+                                message: None,
+                                line_edit: None,
+                            }]),
+                            optional: false,
+                        })
+                    }
+
+                    Ok(xpriv) => {
+                        let priv_key = xpriv.to_string();
+                        self.wallet_model
+                            .add_wallet(
+                                &priv_key,
+                                &self.string_scratchpad[0],
+                                &self.string_scratchpad[1],
+                            )
+                            .unwrap();
+                        self.dialog_box = Some(DialogBox {
+                            dialog_box_enum: DialogBoxEnum::WalletCreated,
+                            title: "Wallet Added",
+                            dialog_line_edit: Vec::from([DialogLineEdit {
+                                message: None,
+                                line_edit: None,
+                            }]),
+                            optional: false,
+                        });
+                        self.change_state(destination);
+                    }
+                }
             }
         });
     }
