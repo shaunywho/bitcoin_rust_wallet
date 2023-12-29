@@ -1,45 +1,84 @@
-use crate::bitcoin_wallet::extract_address_from_transaction;
+use crate::{
+    bitcoin_wallet::{
+        generate_mnemonic_string, generate_qrcode_from_address, get_transaction_details,
+        TransactionDirection,
+    },
+    wallet_file_manager::EntryType,
+};
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
-use super::{
-    generate_qrcode_from_address, CentralPanelState, DialogBox, DialogBoxEnum, MyApp,
-    SidePanelState,
-};
+use super::{CentralPanelState, DialogBox, DialogBoxEnum, DialogLineEdit, MyApp};
 
 use chrono::prelude::*;
 
 use zxcvbn::zxcvbn;
 
 impl MyApp {
-    pub fn render_wallet_panel(&mut self, enabled: bool, ui: &mut Ui) {
-        ui.set_enabled(enabled);
+    pub fn render_wallet_main_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        let wallet = self.wallet_model.get_active_wallet_data();
         ui.vertical_centered(|ui| {
-            let wallet = self.wallet_model.get_selected_wallet_data();
-            ui.heading(format!("Wallet Name: {}", &wallet.wallet_name.to_owned()));
-            // let wallet_name = self
-            if ui.button("Rename Wallet").clicked() {
-                self.rename_wallet_string = wallet.wallet_name.to_string();
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::ChangeWalletName,
-                    title: "Change Wallet Name",
-                    message: Some("Enter new wallet name".into()),
-                    line_edit: Some(self.rename_wallet_string.clone()),
-                    optional: true,
+            ui.add_space(20.0);
+            ui.heading(&wallet.wallet_name.to_owned());
+        });
+        ui.add_space(20.0);
+
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_label("Selected Wallet")
+                .selected_text(format!(
+                    "{:?}",
+                    self.wallet_model.get_active_wallet_data().wallet_name
+                ))
+                .show_ui(ui, |ui| {
+                    for wallet in self.wallet_model.json_wallet_data.wallets.iter() {
+                        if ui
+                            .selectable_value(
+                                &mut self.wallet_model.active_wallet.clone().unwrap(),
+                                wallet.pub_key.clone(),
+                                wallet.wallet_name.clone(),
+                            )
+                            .clicked()
+                        {
+                            self.wallet_model.active_wallet = Some(wallet.pub_key.clone());
+                        };
+                    }
                 });
+            if ui.button("Show Mnemonic").clicked() {
+                self.change_state(CentralPanelState::WalletSecret);
+            }
+            if ui.button("Rename Wallet").clicked() {
+                self.change_state(CentralPanelState::WalletRename);
+            }
+            if self.wallet_model.json_wallet_data.wallets.len() > 1 {
+                if ui.button("Delete Wallet").clicked() {
+                    self.change_state(CentralPanelState::WalletDelete {
+                        pub_key: self.wallet_model.get_active_wallet_pub_key(),
+                    })
+                }
+            }
+            if ui.button("Add New Wallet").clicked() {
+                let mnemonic_string = generate_mnemonic_string().unwrap();
+                self.change_state(CentralPanelState::WalletNewWallet {
+                    mnemonic_string: mnemonic_string,
+                })
+            }
+            if ui.button("Add Existing Wallet").clicked() {
+                self.change_state(CentralPanelState::WalletExistingWallet)
             }
         });
-        let wallet = self.wallet_model.get_selected_wallet_data();
-        ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
-        ui.add_space(50.0);
-        let public_key = &wallet.pub_key;
-
-        ui.label(format!("Public Key: {:?}", &public_key));
-        if ui.button("Copy").clicked() {
-            ui.output_mut(|o| o.copied_text = public_key.to_string());
-        };
-
+        ui.add_space(20.0);
         ui.vertical_centered(|ui| {
+            let wallet = self.wallet_model.get_active_wallet_data();
+            ui.add_space(10.0);
+            ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
+            ui.add_space(50.0);
+
             TableBuilder::new(ui)
                 .column(Column::exact(200.0).resizable(false))
                 .column(Column::exact(70.0))
@@ -56,22 +95,24 @@ impl MyApp {
                         ui.heading("Date");
                     });
                     header.col(|ui| {
-                        ui.heading("Destination");
+                        ui.heading("Sender/Recipient");
                     });
                 })
                 .body(|mut body| {
-                    let wallet = self.wallet_model.get_selected_wallet_data();
+                    let wallet = self.wallet_model.get_active_wallet_data();
                     if let Some(transactions) = wallet.sorted_transactions.clone() {
-                        for transaction in transactions.iter() {
-                            let addresses = extract_address_from_transaction(
-                                &transaction.transaction.clone().unwrap(),
-                            );
-                            let transaction_total =
-                                transaction.received as i64 - transaction.sent as i64;
+                        for transaction_details in transactions.iter() {
+                            let (
+                                transaction_direction,
+                                address,
+                                txid,
+                                transaction_total,
+                                fee,
+                                confirmation_time,
+                            ) = get_transaction_details(transaction_details.clone());
                             body.row(30.0, |mut row| {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
-                                        let txid = transaction.txid.to_string();
                                         if ui.button("📋").on_hover_text("Click to copy").clicked()
                                         {
                                             ui.output_mut(|o| o.copied_text = txid.clone());
@@ -85,61 +126,48 @@ impl MyApp {
                                 });
 
                                 row.col(|ui| {
-                                    let transaction_string = if transaction_total < 0 {
-                                        format!(
-                                            "{} (fee: {})",
-                                            transaction_total,
-                                            transaction.fee.unwrap()
-                                        )
-                                    } else {
-                                        format!("+{}", transaction_total)
+                                    let transaction_string = match transaction_direction {
+                                        TransactionDirection::To => {
+                                            format!("{} (fee: {})", transaction_total, fee)
+                                        }
+                                        TransactionDirection::From => {
+                                            format!("+{}", transaction_total)
+                                        }
                                     };
                                     ui.label(transaction_string);
                                 });
 
                                 row.col(|ui| {
-                                    let confirmation_time_str: String;
-                                    if let Some(confirmation_time) = &transaction.confirmation_time
-                                    {
-                                        let confirmation_time_local = Local
-                                            .timestamp_opt(confirmation_time.timestamp as i64, 0)
-                                            .unwrap();
+                                    let confirmation_time_str = match confirmation_time {
+                                        Some(confirmation_time) => {
+                                            let confirmation_time_local = Local
+                                                .timestamp_opt(
+                                                    confirmation_time.timestamp as i64,
+                                                    0,
+                                                )
+                                                .unwrap();
+                                            confirmation_time_local
+                                                .format("%d/%m/%y %H:%M:%S")
+                                                .to_string()
+                                        }
+                                        None => "Pending".to_string(),
+                                    };
 
-                                        confirmation_time_str = confirmation_time_local
-                                            .format("%d/%m/%y %H:%M:%S")
-                                            .to_string();
-                                    } else {
-                                        confirmation_time_str = "Pending".to_string();
-                                    }
                                     ui.label(confirmation_time_str);
                                 });
                                 row.col(|ui| {
-                                    let destination_string: String;
-                                    let address: String;
-                                    if transaction_total < 0 {
-                                        destination_string = format!("To {}", addresses[0]);
-                                        address = addresses[0].to_string();
-                                    } else {
-                                        destination_string = format!("From {}", addresses[1]);
-                                        address = addresses[1].to_string()
-                                    }
-                                    ui.horizontal(|ui| {
-                                        ui.label(destination_string);
-                                        if ui.button("➕").clicked() {
-                                            let wallet_name = String::new();
-                                            self.dialog_box = Some(DialogBox {
-                                                dialog_box_enum: DialogBoxEnum::AddContactWallet {
-                                                    pub_key: address.clone(),
-                                                },
-                                                title: "Add Wallet",
-                                                message: Some(
-                                                    format!("Wallet name for {}", address).into(),
-                                                ),
-                                                line_edit: Some(wallet_name),
-                                                optional: true,
-                                            });
-                                        }
-                                    });
+                                    let destination_string = match transaction_direction {
+                                        TransactionDirection::To => format!(
+                                            "To {}",
+                                            self.wallet_model.get_wallet_name(&address)
+                                        ),
+                                        TransactionDirection::From => format!(
+                                            "From {}",
+                                            self.wallet_model.get_wallet_name(&address)
+                                        ),
+                                    };
+
+                                    ui.label(destination_string);
                                 });
                             });
                         }
@@ -147,186 +175,551 @@ impl MyApp {
                 });
         });
     }
-    pub fn render_sending_panel(&mut self, enabled: bool, ui: &mut Ui) {
-        ui.set_enabled(enabled);
-        ui.heading(format!(
-            "Wallet Balance: {:?}",
-            self.wallet_model.get_selected_wallet_data().get_total()
-        ));
-        ui.add_space(50.0);
+    pub fn render_sending_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.add_space(20.0);
         ui.vertical_centered(|ui| {
+            ui.heading(format!(
+                "Wallet Balance: {:?}",
+                self.wallet_model.get_active_wallet_data().get_total()
+            ));
+            ui.add_space(50.0);
+
             ui.heading("Recipient Address");
-            ui.text_edit_singleline(&mut self.recipient_address_string);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+
+            ui.add_space(50.0);
+
+            ui.heading("Amount to send");
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
+            ui.label("Sats");
+
+            if ui.button("Send").clicked() {
+                let (valid, invalid_vec) = self.is_valid_transaction_request(
+                    &self.string_scratchpad[0],
+                    &self.string_scratchpad[1],
+                );
+
+                if valid {
+                    self.dialog_box = Some(DialogBox {
+                        dialog_box_enum: DialogBoxEnum::ConfirmSend,
+                        title: "Confirm Transaction",
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some(
+                                format!(
+                                    "Are you sure you want to send {} Sats to {}?",
+                                    &self.string_scratchpad[1], &self.string_scratchpad[0]
+                                )
+                                .into(),
+                            ),
+                            line_edit: None,
+                        }]),
+
+                        optional: true,
+                    });
+                } else {
+                    let invalid_message = invalid_vec.join("\n");
+                    self.dialog_box = Some(DialogBox {
+                        dialog_box_enum: DialogBoxEnum::InvalidTransaction,
+                        title: "Invalid Transaction",
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some(invalid_message),
+                            line_edit: None,
+                        }]),
+                        optional: false,
+                    })
+                }
+            }
         });
-        ui.add_space(50.0);
+    }
+
+    pub fn render_receiving_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.add_space(20.0);
+        let wallet = self.wallet_model.get_active_wallet_data();
+        let pub_key = wallet.pub_key;
+        ui.vertical_centered(|ui| {
+            // Encode some data into bits.
+            ui.heading("Public Key");
+            ui.add_space(10.0);
+
+            ui.heading(&pub_key);
+            ui.add_space(10.0);
+
+            let img = ui.ctx().load_texture(
+                "my-image",
+                generate_qrcode_from_address(&pub_key).unwrap(),
+                Default::default(),
+            );
+
+            ui.add(egui::Image::from_texture(&img));
+
+            ui.add_space(10.0);
+            if ui.button("Copy Public Key").clicked() {
+                ui.output_mut(|o| o.copied_text = pub_key);
+            }
+        });
+    }
+
+    pub fn render_contacts_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.add_space(20.0);
 
         ui.vertical_centered(|ui| {
-            ui.heading("Amount to send");
-            ui.text_edit_singleline(&mut self.amount_to_send_string);
-            ui.label("Sats");
-        });
-        if ui.button("Send").clicked() {
-            let (valid, invalid_vec) = self.is_valid_transaction_request();
-
-            if valid {
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::ConfirmSend,
-                    title: "Confirm Transaction",
-                    message: Some(
-                        format!(
-                            "Are you sure you want to send {} Sats to {}?",
-                            &self.amount_to_send_string, &self.recipient_address_string
-                        )
-                        .into(),
-                    ),
-                    line_edit: None,
-                    optional: true,
-                });
-            } else {
-                let invalid_message = invalid_vec.join("\n");
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::InvalidTransaction,
-                    title: "Invalid Transaction",
-                    message: Some(invalid_message),
-                    line_edit: None,
-                    optional: false,
-                })
+            ui.heading("Contact List");
+            ui.add_space(10.0);
+            if ui.button("Add Contact").clicked() {
+                //
             }
-        }
+            ui.add_space(10.0);
+            TableBuilder::new(ui)
+                .column(Column::exact(250.0).resizable(false))
+                .column(Column::exact(350.0))
+                .column(Column::exact(100.0))
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.heading("Wallet Name");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Public Key");
+                    });
+                    header.col(|ui| {});
+                })
+                .body(|mut body| {
+                    let contacts = &self.wallet_model.json_wallet_data.contacts;
+                    for contact in contacts.iter() {
+                        body.row(30.0, |mut row| {
+                            row.col(|ui| {
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button(contact.wallet_name.clone())
+                                        .on_hover_text("Change")
+                                        .clicked()
+                                    {
+                                        let wallet_name = contact.wallet_name.clone();
+                                        self.dialog_box = Some(DialogBox {
+                                            dialog_box_enum: DialogBoxEnum::ChangeContactName {
+                                                pub_key: contact.pub_key.clone(),
+                                            },
+                                            title: "Change Wallet Name",
+                                            dialog_line_edit: Vec::from([DialogLineEdit {
+                                                message: Some(
+                                                    format!("Wallet name for {}", contact.pub_key)
+                                                        .into(),
+                                                ),
+                                                line_edit: Some(wallet_name),
+                                            }]),
+                                            optional: true,
+                                        });
+                                    }
+                                });
+                            });
+
+                            row.col(|ui| {
+                                ui.label(contact.pub_key.clone());
+                            });
+                            row.col(|ui| {
+                                if ui.button("📋").on_hover_text("Click to copy").clicked() {
+                                    ui.output_mut(|o| o.copied_text = contact.pub_key.clone());
+                                }
+                            });
+                        });
+                    }
+                });
+        });
     }
 
-    pub fn render_receiving_panel(&mut self, enabled: bool, ui: &mut Ui) {
-        ui.set_enabled(enabled);
-        let wallet = self.wallet_model.get_selected_wallet_data();
-        let public_key = &wallet.pub_key;
-        ui.label(format!("Public Key: {:?}", public_key));
-        // Encode some data into bits.
+    pub fn render_new_wallet_creation(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+        mnemonic_string: &str,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("Write down the following mnemonic");
+            ui.add_space(20.0);
 
-        let img = ui.ctx().load_texture(
-            "my-image",
-            generate_qrcode_from_address(&public_key).unwrap(),
-            Default::default(),
-        );
-
-        ui.add(egui::Image::from_texture(&img));
-    }
-
-    pub fn render_contacts_panel(&mut self, enabled: bool, ui: &mut Ui) {}
-
-    pub fn render_create_wallet_panel(&mut self, ui: &mut Ui, mnemonic_string: &str) {
-        ui.heading("Write down the following mnemonic");
-        ui.horizontal(|ui| {
-            ui.label(mnemonic_string);
+            ui.strong(mnemonic_string);
+            ui.add_space(30.0);
             if ui.button("Copy Mnemonic").clicked() {
                 ui.output_mut(|o| o.copied_text = mnemonic_string.to_string());
             }
+            ui.add_space(20.0);
+            ui.label("Type and confirm the mnemonic above");
+            ui.add_space(10.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            ui.add_space(10.0);
+            if ui.button("Confirm").clicked() {
+                if self.string_scratchpad[0] == mnemonic_string {
+                    self.wallet_model
+                        .add_wallet(&mnemonic_string, "New Wallet Name")
+                        .unwrap();
+                    self.dialog_box = Some(DialogBox {
+                        dialog_box_enum: DialogBoxEnum::WalletCreated,
+                        title: "Wallet Created",
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: None,
+                            line_edit: None,
+                        }]),
+                        optional: false,
+                    });
+                    self.change_state(destination);
+                    self.clear_string_scratchpad();
+                } else {
+                    self.dialog_box = Some(DialogBox {
+                        dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
+                        title: "Incorrect Mnemonic",
+                        dialog_line_edit: Vec::from([DialogLineEdit {
+                            message: Some("Check your entry and type in the mnemonic again".into()),
+                            line_edit: None,
+                        }]),
+                        optional: false,
+                    })
+                }
+            }
         });
-        ui.label("Type and confirm the mnemonic above");
-        ui.text_edit_singleline(&mut self.confirm_mnemonic_string);
-        if ui.button("Confirm").clicked() {
-            if self.confirm_mnemonic_string == mnemonic_string {
+    }
+
+    pub fn render_new_wallet_existing(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("Type in the mnemonic for an existing wallet");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            if ui.button("Confirm").clicked() {
                 self.wallet_model
-                    .add_wallet_from_mnemonic(&mnemonic_string)
+                    .add_wallet(&self.string_scratchpad[0], "New Wallet Name")
                     .unwrap();
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::WalletCreated,
-                    title: "Wallet Created",
-                    message: None,
-                    line_edit: None,
+                    title: "Wallet Added",
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
                     optional: false,
                 });
-                self.central_panel_state = CentralPanelState::WalletAvailable {
-                    last_interaction_time: chrono::offset::Local::now(),
-                };
-            } else {
-                self.dialog_box = Some(DialogBox {
-                    dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
-                    title: "Incorrect Mnemonic",
-                    message: Some("Check your entry and type in the mnemonic again".into()),
-                    line_edit: None,
-                    optional: false,
-                })
+                self.change_state(destination);
             }
-        }
-    }
-    pub fn render_create_password_panel(&mut self, ui: &mut Ui) {
-        ui.label("Type Password");
-        let password_entry =
-            egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
-        ui.add(password_entry);
-        ui.label("Type your password again");
-        let password_entry_confirmation =
-            egui::TextEdit::singleline(&mut self.password_entry_confirmation_string).password(true);
-        ui.add(password_entry_confirmation);
-        let mut password_strength = 0;
-
-        if let Ok(password_strength_estimate) = zxcvbn(&self.password_entry_string, &[]) {
-            password_strength = password_strength_estimate.score();
-        }
-
-        if self.password_entry_string != self.password_entry_confirmation_string {
-            ui.label("passwords not the same");
-        } else {
-            let password_strength_bar =
-                egui::widgets::ProgressBar::new(password_strength as f32 / 4.0);
-            ui.add(password_strength_bar);
-            let password_strength_string: &str;
-            match password_strength {
-                0 => password_strength_string = "Very Weak",
-                1 => password_strength_string = "Weak",
-                2 => password_strength_string = "So-so",
-                3 => password_strength_string = "Good",
-                4 => password_strength_string = "Great",
-                _ => password_strength_string = "NP-Badboy",
-            }
-            ui.label(password_strength_string);
-            if ui.button("Enter").clicked() {
-                self.wallet_model
-                    .create_passworded_file(self.password_entry_string.clone())
-                    .unwrap();
-            }
-        };
-    }
-
-    pub fn render_enter_password_panel(&mut self, ui: &mut Ui) {
-        ui.set_enabled(true);
-        let password_entry =
-            egui::TextEdit::singleline(&mut self.password_entry_string).password(true);
-        ui.add(password_entry);
-        if ui.button("Enter").clicked() {
-            if self
-                .wallet_model
-                .validate_password(&self.password_entry_string)
-            {
-                self.central_panel_state = CentralPanelState::WalletNotInitialised;
-            } else {
-                self.password_entry_string = String::new();
-            }
-        }
-    }
-
-    pub fn render_centrepanel(
-        &mut self,
-        enabled: bool,
-        ctx: &egui::Context,
-        _frame: &mut eframe::Frame,
-    ) {
-        egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
-            CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(ui),
-            CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => {
-                let mnemonic_string = mnemonic_string.clone();
-                self.render_create_wallet_panel(ui, &mnemonic_string);
-            }
-            CentralPanelState::WalletNotInitialised => {}
-            CentralPanelState::PasswordNeeded => self.render_enter_password_panel(ui),
-            CentralPanelState::WalletAvailable {
-                last_interaction_time,
-            } => match self.side_panel_state {
-                SidePanelState::Wallet => self.render_wallet_panel(enabled, ui),
-                SidePanelState::Sending => self.render_sending_panel(enabled, ui),
-                SidePanelState::Receiving => self.render_receiving_panel(enabled, ui),
-                SidePanelState::Contacts => self.render_contacts_panel(enabled, ui),
-            },
         });
+    }
+
+    pub fn render_create_password_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.label("Type New Password");
+            let password_entry =
+                egui::TextEdit::singleline(&mut self.string_scratchpad[0]).password(true);
+
+            ui.add(password_entry);
+            ui.add_space(20.0);
+            ui.label("Confirm Password");
+            let password_entry_confirmation =
+                egui::TextEdit::singleline(&mut self.string_scratchpad[1]).password(true);
+            ui.add(password_entry_confirmation);
+            let mut password_strength = 0;
+
+            if let Ok(password_strength_estimate) = zxcvbn(&self.string_scratchpad[0], &[]) {
+                password_strength = password_strength_estimate.score();
+            }
+
+            if self.string_scratchpad[0] != self.string_scratchpad[1] {
+                ui.add_space(30.0);
+                ui.label("Passwords not the same");
+            } else {
+                let password_strength_bar =
+                    egui::widgets::ProgressBar::new(password_strength as f32 / 4.0);
+                ui.add_space(30.0);
+                ui.add_sized([285.0, 0.0], password_strength_bar);
+                let password_strength_string: &str;
+                match password_strength {
+                    0 => password_strength_string = "Very Weak",
+                    1 => password_strength_string = "Weak",
+                    2 => password_strength_string = "So-so",
+                    3 => password_strength_string = "Good",
+                    4 => password_strength_string = "Great",
+                    _ => password_strength_string = "NP-Badboy",
+                }
+                ui.add_space(10.0);
+                ui.label(password_strength_string);
+                ui.add_space(30.0);
+                if ui.button("Enter").clicked() {
+                    self.wallet_model
+                        .create_passworded_file(self.string_scratchpad[0].clone())
+                        .unwrap();
+
+                    self.change_state(destination);
+                }
+            };
+        });
+    }
+
+    pub fn render_enter_password_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(20.0);
+            let password_entry =
+                egui::TextEdit::singleline(&mut self.string_scratchpad[0]).password(true);
+            ui.heading("Enter Password");
+            ui.add_space(20.0);
+            ui.add(password_entry);
+            ui.add_space(20.0);
+
+            if ui.button("Enter").clicked() {
+                if self
+                    .wallet_model
+                    .validate_password(&self.string_scratchpad[0])
+                {
+                    self.initialise_last_interaction_time();
+                    self.change_state(destination);
+                } else {
+                    self.clear_string_scratchpad();
+                }
+            }
+        });
+    }
+
+    pub fn render_settings_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        if ui.button("Change Password").clicked() {
+            self.change_state(CentralPanelState::SettingsChangePassword);
+        }
+    }
+
+    pub fn render_delete_wallet_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        pub_key: String,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        let (entry_type, wallet) = self.wallet_model.get_wallet_data(&pub_key);
+        let wallet_name = wallet.wallet_name.clone();
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+
+            ui.heading(format!(
+                "Are you sure you want to delete wallet {}?",
+                wallet_name
+            ));
+            ui.strong(&pub_key);
+            if ui.button("Confirm").clicked() {
+                match entry_type {
+                    EntryType::Wallet => {
+                        self.wallet_model.delete_wallet(&pub_key);
+                        self.change_state(CentralPanelState::WalletMain);
+                    }
+                    EntryType::Contact => {
+                        self.wallet_model.delete_contact(&pub_key);
+                        self.change_state(CentralPanelState::ContactMain);
+                    }
+                }
+            }
+        });
+    }
+    pub fn render_rename_wallet_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        pub_key: String,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            let (entry_type, wallet) = self.wallet_model.get_wallet_data(&pub_key);
+
+            ui.add_space(50.0);
+            ui.heading("Public Key");
+            ui.add_space(20.0);
+
+            ui.label(wallet.pub_key.clone());
+
+            ui.add_space(20.0);
+            ui.heading("Current Wallet Name");
+
+            ui.add_space(10.0);
+            ui.label(wallet.wallet_name.clone());
+            ui.add_space(20.0);
+            ui.heading("New Wallet Name");
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+
+            if ui.button("Confirm").clicked() {
+                self.wallet_model
+                    .rename_wallet(entry_type, &pub_key, &self.string_scratchpad[0]);
+                match entry_type {
+                    EntryType::Wallet => self.change_state(CentralPanelState::WalletMain),
+                    EntryType::Contact => self.change_state(CentralPanelState::ContactMain),
+                }
+            }
+        });
+    }
+
+    pub fn render_wallet_secret_panel(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            let wallet = self.wallet_model.get_active_wallet_data();
+            let mnemonic_string = wallet.mnemonic.unwrap();
+            let priv_key = wallet.priv_key.unwrap();
+            ui.add_space(50.0);
+            ui.heading("Mnemonic");
+            ui.add_space(20.0);
+
+            ui.strong(&mnemonic_string);
+            if ui.button("Copy Mnemonic").clicked() {
+                ui.output_mut(|o| o.copied_text = mnemonic_string);
+            }
+            ui.add_space(20.0);
+            ui.heading("Private Key");
+            ui.add_space(20.0);
+            ui.strong(&priv_key);
+            if ui.button("Copy Private Key").clicked() {
+                ui.output_mut(|o| o.copied_text = priv_key);
+            }
+        });
+    }
+
+    pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
+            CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(
+                ui,
+                false,
+                None,
+                CentralPanelState::WalletNotInitialised,
+            ),
+            CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => self
+                .render_new_wallet_creation(
+                    ui,
+                    false,
+                    None,
+                    CentralPanelState::WalletNotInitialised,
+                    &mnemonic_string.clone(),
+                ),
+            CentralPanelState::WalletNotInitialised => {}
+            CentralPanelState::PasswordNeeded { destination } => {
+                self.render_enter_password_panel(ui, false, None, *destination.clone())
+            }
+            CentralPanelState::WalletMain => self.render_wallet_main_panel(ui, true, None),
+            CentralPanelState::SendingMain => self.render_sending_panel(ui, true, None),
+            CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
+            CentralPanelState::ContactMain => self.render_contacts_panel(ui, true, None),
+            CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
+            CentralPanelState::WalletDelete { pub_key } => self.render_delete_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                pub_key.to_string(),
+            ),
+            CentralPanelState::WalletRename => self.render_rename_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                self.wallet_model.get_active_wallet_data().pub_key,
+            ),
+
+            CentralPanelState::WalletSecret => {
+                self.render_wallet_secret_panel(ui, true, Some(CentralPanelState::WalletMain))
+            }
+            CentralPanelState::SettingsChangePassword => self.render_create_password_panel(
+                ui,
+                true,
+                Some(CentralPanelState::SettingsMain),
+                CentralPanelState::SettingsChangePassword,
+            ),
+
+            CentralPanelState::WalletNewWallet { mnemonic_string } => self
+                .render_new_wallet_creation(
+                    ui,
+                    true,
+                    Some(CentralPanelState::WalletMain),
+                    CentralPanelState::WalletMain,
+                    &mnemonic_string.clone(),
+                ),
+            CentralPanelState::WalletExistingWallet => self.render_new_wallet_existing(
+                ui,
+                true,
+                Some(CentralPanelState::WalletMain),
+                CentralPanelState::WalletMain,
+            ),
+        });
+    }
+    pub fn clear_string_scratchpad(&mut self) {
+        self.string_scratchpad = [String::new(), String::new(), String::new()];
+    }
+    pub fn initialise_last_interaction_time(&mut self) {
+        self.last_interaction_time = chrono::offset::Local::now();
+    }
+
+    pub fn change_state(&mut self, state: CentralPanelState) {
+        self.clear_string_scratchpad();
+        self.central_panel_state = state;
+    }
+
+    pub fn boiler_plate_render(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: &Option<CentralPanelState>,
+    ) {
+        if let Some(_) = self.dialog_box {
+            ui.set_enabled(false);
+        }
+        if watch {
+            self.password_needed_watchdog_timer();
+        }
+        if let Some(source) = source.clone() {
+            if ui.button("Back").clicked() {
+                self.change_state(source);
+            }
+        }
     }
 }
