@@ -30,13 +30,24 @@ impl MyApp {
         ui.add_space(20.0);
 
         ui.horizontal(|ui| {
-            let mut selected = 2;
             egui::ComboBox::from_label("Selected Wallet")
-                .selected_text(format!("{:?}", selected))
+                .selected_text(format!(
+                    "{:?}",
+                    self.wallet_model.get_active_wallet_data().wallet_name
+                ))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut selected, 1, "First");
-                    ui.selectable_value(&mut selected, 2, "Second");
-                    ui.selectable_value(&mut selected, 3, "Third");
+                    for wallet in self.wallet_model.json_wallet_data.wallets.iter() {
+                        if ui
+                            .selectable_value(
+                                &mut self.wallet_model.active_wallet.clone().unwrap(),
+                                wallet.pub_key.clone(),
+                                wallet.wallet_name.clone(),
+                            )
+                            .clicked()
+                        {
+                            self.wallet_model.active_wallet = Some(wallet.pub_key.clone());
+                        };
+                    }
                 });
             if ui.button("Show Mnemonic").clicked() {
                 self.change_state(CentralPanelState::WalletSecret);
@@ -44,10 +55,12 @@ impl MyApp {
             if ui.button("Rename Wallet").clicked() {
                 self.change_state(CentralPanelState::WalletRename);
             }
-            if ui.button("Delete Wallet").clicked() {
-                self.change_state(CentralPanelState::WalletDelete {
-                    pub_key: self.wallet_model.get_active_wallet_string(),
-                })
+            if self.wallet_model.json_wallet_data.wallets.len() > 1 {
+                if ui.button("Delete Wallet").clicked() {
+                    self.change_state(CentralPanelState::WalletDelete {
+                        pub_key: self.wallet_model.get_active_wallet_pub_key(),
+                    })
+                }
             }
             if ui.button("Add New Wallet").clicked() {
                 let mnemonic_string = generate_mnemonic_string().unwrap();
@@ -178,16 +191,19 @@ impl MyApp {
             ui.add_space(50.0);
 
             ui.heading("Recipient Address");
-            ui.text_edit_singleline(&mut self.recipient_address_string);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
 
             ui.add_space(50.0);
 
             ui.heading("Amount to send");
-            ui.text_edit_singleline(&mut self.amount_to_send_string);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
             ui.label("Sats");
 
             if ui.button("Send").clicked() {
-                let (valid, invalid_vec) = self.is_valid_transaction_request();
+                let (valid, invalid_vec) = self.is_valid_transaction_request(
+                    &self.string_scratchpad[0],
+                    &self.string_scratchpad[1],
+                );
 
                 if valid {
                     self.dialog_box = Some(DialogBox {
@@ -197,7 +213,7 @@ impl MyApp {
                             message: Some(
                                 format!(
                                     "Are you sure you want to send {} Sats to {}?",
-                                    &self.amount_to_send_string, &self.recipient_address_string
+                                    &self.string_scratchpad[1], &self.string_scratchpad[0]
                                 )
                                 .into(),
                             ),
@@ -528,9 +544,10 @@ impl MyApp {
             ui.add_space(50.0);
 
             ui.heading(format!(
-                "Are you sure you want to delete wallet {}, public key: {}",
-                wallet_name, pub_key
+                "Are you sure you want to delete wallet {}?",
+                wallet_name
             ));
+            ui.strong(&pub_key);
             if ui.button("Confirm").clicked() {
                 match entry_type {
                     EntryType::Wallet => {

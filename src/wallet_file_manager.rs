@@ -84,7 +84,7 @@ impl WalletModel {
         sync_sender: Sender<SyncData>,
     ) -> JoinHandle<()> {
         let blockchain = Arc::clone(&self.blockchain);
-        let pub_key = self.get_active_wallet_string();
+        let pub_key = self.get_active_wallet_pub_key();
         let handle = thread::spawn(move || {
             let wallet_locked = wallet.lock().unwrap();
             wallet_locked
@@ -366,17 +366,17 @@ impl WalletModel {
             })
     }
 
-    pub fn get_active_wallet_string(&self) -> String {
+    pub fn get_active_wallet_pub_key(&self) -> String {
         return self.active_wallet.clone().unwrap();
     }
 
     pub fn get_active_wallet(&self) -> Arc<Mutex<Wallet<MemoryDatabase>>> {
-        let wallet_string = self.get_active_wallet_string();
+        let wallet_string = self.get_active_wallet_pub_key();
         let wallet = Arc::clone(&self.wallet_objs[&wallet_string]);
         return wallet;
     }
     pub fn get_active_wallet_data(&self) -> JsonWallet {
-        let wallet_string = self.get_active_wallet_string();
+        let wallet_string = self.get_active_wallet_pub_key();
         let wallet_data = self
             .json_wallet_data
             .wallets
@@ -394,27 +394,33 @@ impl WalletModel {
         balance: Option<Balance>,
         transactions: Option<Vec<TransactionDetails>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let wallet;
+        let mut wallet = None;
         match entry_type {
             EntryType::Wallet => {
                 let index = self
                     .json_wallet_data
                     .wallets
                     .iter()
-                    .position(|wallet| wallet.pub_key == pub_key)
-                    .unwrap();
-                wallet = &mut self.json_wallet_data.wallets[index];
+                    .position(|wallet| wallet.pub_key == pub_key);
+                if let Some(index) = index {
+                    wallet = Some(&mut self.json_wallet_data.wallets[index]);
+                }
             }
             EntryType::Contact => {
                 let index = self
                     .json_wallet_data
                     .contacts
                     .iter()
-                    .position(|wallet| wallet.pub_key == pub_key)
-                    .unwrap();
-                wallet = &mut self.json_wallet_data.contacts[index];
+                    .position(|wallet| wallet.pub_key == pub_key);
+                if let Some(index) = index {
+                    wallet = Some(&mut self.json_wallet_data.contacts[index]);
+                }
             }
         }
+        if let None = wallet {
+            return Ok(());
+        }
+        let wallet = wallet.unwrap();
 
         if let Some(wallet_name) = wallet_name {
             wallet.wallet_name = wallet_name;

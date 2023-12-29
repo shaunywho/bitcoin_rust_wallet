@@ -11,7 +11,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
 const FILENAME: &str = "./wallet.txt";
-const PASSWORD_NEEDED_TIMEOUT_S: i64 = 2;
+const PASSWORD_NEEDED_TIMEOUT_S: i64 = 300;
 use chrono::{DateTime, Duration};
 
 use egui::InnerResponse;
@@ -71,14 +71,8 @@ pub struct MyApp {
     sync_data_receiver: mpsc::Receiver<SyncData>,
     sync_data_sender: mpsc::Sender<SyncData>,
     active_threads: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
-    rename_wallet_string: String,
     string_scratchpad: [String; 3],
-    recipient_address_string: String,
-    amount_to_send_string: String,
-    password_entry_string: String,
-    password_entry_confirmation_string: String,
     dialog_box: Option<DialogBox>,
-    confirm_mnemonic_string: String,
     last_interaction_time: DateTime<chrono::Local>,
 }
 
@@ -96,9 +90,10 @@ impl MyApp {
             }
 
             DialogBoxEnum::ConfirmSend { .. } => {
-                let recipient_addr = self.recipient_address_string.clone();
-                let amount = (&self.amount_to_send_string).parse().unwrap();
+                let recipient_addr = self.string_scratchpad[0].clone();
+                let amount = (&self.string_scratchpad[1]).parse().unwrap();
                 self.wallet_model.send_transaction(&recipient_addr, amount);
+                self.clear_string_scratchpad();
             }
             _ => {}
         }
@@ -147,14 +142,11 @@ impl MyApp {
         let side_panel_active = SidePanel::Wallet;
         let wallet_model = WalletModel::new(FILENAME);
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
-        let rename_wallet_string = String::new();
+
         let recipient_address_string = String::new();
         let amount_to_send_string = String::new();
-        let password_entry_string = String::new();
-        let password_entry_confirmation_string = String::new();
         let dialog_box = None;
         let active_threads = Arc::new(Mutex::new(HashMap::new()));
-        let confirm_mnemonic_string = String::new();
         let last_interaction_time = chrono::offset::Local::now();
         let string_scratchpad = [String::new(), String::new(), String::new()];
 
@@ -165,13 +157,7 @@ impl MyApp {
             sync_data_sender: sync_data_sender,
             sync_data_receiver: sync_data_receiver,
             active_threads: active_threads,
-            rename_wallet_string: rename_wallet_string,
-            recipient_address_string: recipient_address_string,
-            amount_to_send_string: amount_to_send_string,
-            password_entry_string: password_entry_string,
-            password_entry_confirmation_string: password_entry_confirmation_string,
             dialog_box: dialog_box,
-            confirm_mnemonic_string: confirm_mnemonic_string,
             last_interaction_time: last_interaction_time,
             string_scratchpad: string_scratchpad,
         };
@@ -194,20 +180,24 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn is_valid_transaction_request(&mut self) -> (bool, Vec<String>) {
+    fn is_valid_transaction_request(
+        &self,
+        recipient_address_string: &str,
+        amount_to_send_string: &str,
+    ) -> (bool, Vec<String>) {
         let mut valid = true;
         let mut invalid_transaction_vec = Vec::new();
-        if !is_valid_bitcoin_address(&self.recipient_address_string) {
+        if !is_valid_bitcoin_address(recipient_address_string) {
             valid = false;
             invalid_transaction_vec.push("Invalid Bitcoin Address".to_string());
         }
 
-        if self.is_own_address() {
+        if self.is_own_address(recipient_address_string) {
             valid = false;
             invalid_transaction_vec.push("Can't send to own address".to_string());
         }
 
-        let result: Result<u64, ParseIntError> = self.amount_to_send_string.parse();
+        let result: Result<u64, ParseIntError> = amount_to_send_string.parse();
         match result {
             Ok(amount) => {
                 let total = self.wallet_model.get_active_wallet_data().get_total();
@@ -226,14 +216,14 @@ impl MyApp {
         return (valid, invalid_transaction_vec);
     }
 
-    fn is_own_address(&mut self) -> bool {
-        let address = self.wallet_model.get_active_wallet_string();
+    fn is_own_address(&self, recipient_address_string: &str) -> bool {
+        let address = self.wallet_model.get_active_wallet_pub_key();
 
-        return self.recipient_address_string == address;
+        return recipient_address_string == address;
     }
 
     fn wallet_poll(&mut self) {
-        let active_wallet_priv_key = self.wallet_model.get_active_wallet_string();
+        let active_wallet_pub_key = self.wallet_model.get_active_wallet_pub_key();
 
         let sync_data_channel_clone = self.sync_data_sender.clone();
 
@@ -263,7 +253,7 @@ impl MyApp {
             .active_threads
             .lock()
             .unwrap()
-            .contains_key(&active_wallet_priv_key)
+            .contains_key(&active_wallet_pub_key)
         {
             return;
         }
@@ -273,7 +263,7 @@ impl MyApp {
         self.active_threads
             .lock()
             .unwrap()
-            .insert(active_wallet_priv_key, handle);
+            .insert(active_wallet_pub_key, handle);
     }
 }
 
