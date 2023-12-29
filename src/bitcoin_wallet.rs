@@ -164,12 +164,16 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
-pub fn extract_address_from_transaction(transaction: &Transaction) -> Vec<Address> {
-    transaction
+pub fn extract_address_from_transaction(transaction: &Transaction) -> Vec<String> {
+    return transaction
         .output
         .iter()
-        .map(|output| Address::from_script(&output.script_pubkey, Network::Testnet).unwrap())
-        .collect()
+        .map(|output| {
+            Address::from_script(&output.script_pubkey, Network::Testnet)
+                .unwrap()
+                .to_string()
+        })
+        .collect();
 }
 
 pub fn get_transaction_details(
@@ -187,7 +191,7 @@ pub fn get_transaction_details(
     let transaction_id = transaction_details.txid.to_string();
     let addresses = extract_address_from_transaction(&transaction.clone());
     // let address_index = if transaction_total < 0 { 0 } else { 1 };
-    let transaction_address = addresses[0].to_string();
+    let transaction_address = addresses[0].clone();
     let fee = transaction_details.fee.unwrap();
     let confirmation_time = transaction_details.confirmation_time;
     let transaction_direction = if transaction_total < 0 {

@@ -292,6 +292,7 @@ impl MyApp {
                 .column(Column::exact(250.0).resizable(false))
                 .column(Column::exact(350.0))
                 .column(Column::exact(100.0))
+                .column(Column::exact(100.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Wallet Name");
@@ -299,7 +300,9 @@ impl MyApp {
                     header.col(|ui| {
                         ui.heading("Public Key");
                     });
-                    header.col(|ui| {});
+                    header.col(|ui| {
+                        ui.heading("Last Transaction Txid");
+                    });
                 })
                 .body(|mut body| {
                     let contacts = &self.wallet_model.json_wallet_data.contacts.clone();
@@ -327,6 +330,16 @@ impl MyApp {
                                 if ui.button("📋").on_hover_text("Click to copy").clicked() {
                                     ui.output_mut(|o| o.copied_text = contact.pub_key.clone());
                                 }
+                            });
+
+                            row.col(|ui| {
+                                let last_transaction =
+                                    self.wallet_model.last_transaction(&contact.pub_key.clone());
+                                let mut last_transaction_string = "None".to_string();
+                                if let Some(last_transaction) = last_transaction {
+                                    last_transaction_string = format!("{}", last_transaction.txid);
+                                }
+                                ui.label(last_transaction_string);
                             });
                         });
                     }

@@ -22,6 +22,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 
+use crate::bitcoin_wallet::extract_address_from_transaction;
 use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
 use crate::bitcoin_wallet::get_transaction_details;
@@ -479,6 +480,27 @@ impl WalletModel {
         });
 
         return wallets_contain_wallet || contacts_contain_wallet;
+    }
+
+    pub fn last_transaction(&self, pub_key: &str) -> Option<TransactionDetails> {
+        let mut last_transactions = Vec::new();
+        for wallet in self.json_wallet_data.wallets.iter() {
+            if let Some(transaction) = &wallet.sorted_transactions {
+                let found_transaction = transaction.iter().find(|transaction| {
+                    extract_address_from_transaction(&transaction.transaction.clone().unwrap())[0]
+                        == pub_key
+                });
+                if let Some(transaction) = found_transaction {
+                    last_transactions.push(transaction);
+                }
+            }
+        }
+        if last_transactions.len() == 0 {
+            return None;
+        } else {
+            last_transactions.sort_by(|a, b| a.confirmation_time.cmp(&b.confirmation_time));
+            return Some(last_transactions[0].clone());
+        }
     }
 }
 
