@@ -1,10 +1,13 @@
+use std::str::FromStr;
+
 use crate::{
     bitcoin_wallet::{
-        generate_mnemonic_string, generate_qrcode_from_address, get_transaction_details,
-        TransactionDirection,
+        generate_mnemonic_string, generate_qrcode_from_address, generate_wallet, generate_xpriv,
+        get_transaction_details, is_valid_bitcoin_address, TransactionDirection,
     },
     wallet_file_manager::EntryType,
 };
+use bdk::bitcoin::bip32::ExtendedPrivKey;
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
@@ -32,7 +35,7 @@ impl MyApp {
         ui.horizontal(|ui| {
             egui::ComboBox::from_label("Selected Wallet")
                 .selected_text(format!(
-                    "{:?}",
+                    "{}",
                     self.wallet_model.get_active_wallet_data().wallet_name
                 ))
                 .show_ui(ui, |ui| {
@@ -284,7 +287,7 @@ impl MyApp {
             ui.heading("Contact List");
             ui.add_space(10.0);
             if ui.button("Add Contact").clicked() {
-                //
+                self.change_state(CentralPanelState::ContactsNewContact);
             }
             ui.add_space(10.0);
             TableBuilder::new(ui)
@@ -368,33 +371,36 @@ impl MyApp {
             ui.add_space(10.0);
             ui.text_edit_singleline(&mut self.string_scratchpad[0]);
             ui.add_space(10.0);
+            ui.label("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
             if ui.button("Confirm").clicked() {
-                if self.string_scratchpad[0] == mnemonic_string {
-                    self.wallet_model
-                        .add_wallet(&mnemonic_string, "New Wallet Name")
-                        .unwrap();
-                    self.dialog_box = Some(DialogBox {
-                        dialog_box_enum: DialogBoxEnum::WalletCreated,
-                        title: "Wallet Created",
-                        dialog_line_edit: Vec::from([DialogLineEdit {
-                            message: None,
-                            line_edit: None,
-                        }]),
-                        optional: false,
-                    });
-                    self.change_state(destination);
-                    self.clear_string_scratchpad();
-                } else {
-                    self.dialog_box = Some(DialogBox {
-                        dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
-                        title: "Incorrect Mnemonic",
-                        dialog_line_edit: Vec::from([DialogLineEdit {
-                            message: Some("Check your entry and type in the mnemonic again".into()),
-                            line_edit: None,
-                        }]),
-                        optional: false,
-                    })
-                }
+                let priv_key = generate_xpriv(&mnemonic_string).unwrap().to_string();
+                let copied_correctly = self.string_scratchpad[0] == mnemonic_string;
+                let wallet_in_use = self.wallet_model.contains_wallet(&priv_key);
+                let title = match (copied_correctly, wallet_in_use) {
+                    (true, false) => {
+                        self.change_state(destination);
+                        "Wallet Created"
+                    }
+                    (true, true) => {
+                        self.change_state(CentralPanelState::WalletNewWallet {
+                            mnemonic_string: generate_mnemonic_string().unwrap(),
+                        });
+                        "Wallet Already In Use"
+                    }
+                    (false, _) => "Incorrectly Copied",
+                };
+
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
+                    title: title,
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                })
             }
         });
     }
@@ -412,20 +418,90 @@ impl MyApp {
             ui.heading("Type in the mnemonic for an existing wallet");
             ui.add_space(20.0);
             ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            ui.add_space(50.0);
+            ui.heading("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
+
             if ui.button("Confirm").clicked() {
-                self.wallet_model
-                    .add_wallet(&self.string_scratchpad[0], "New Wallet Name")
-                    .unwrap();
+                let parse_result = generate_xpriv(&self.string_scratchpad[0]);
+
+                let title = match &parse_result {
+                    Ok(xprv) => {
+                        let wallet_in_use = self.wallet_model.contains_wallet(&xprv.to_string());
+                        if !wallet_in_use {
+                            self.wallet_model
+                                .add_wallet(
+                                    &xprv.to_string(),
+                                    &self.string_scratchpad[0],
+                                    &self.string_scratchpad[1],
+                                )
+                                .unwrap();
+                            self.change_state(destination);
+                            "Wallet Added"
+                        } else {
+                            "Wallet Already In Use"
+                        }
+                    }
+                    Err(_) => "Mnemonic Incorrect",
+                };
+
                 self.dialog_box = Some(DialogBox {
                     dialog_box_enum: DialogBoxEnum::WalletCreated,
-                    title: "Wallet Added",
+                    title: title,
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                })
+            }
+        });
+    }
+
+    pub fn render_new_contact(
+        &mut self,
+        ui: &mut Ui,
+        watch: bool,
+        source: Option<CentralPanelState>,
+        destination: CentralPanelState,
+    ) {
+        self.boiler_plate_render(ui, watch, &source);
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("Public Key");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[0]);
+            ui.add_space(50.0);
+            ui.heading("Wallet Name");
+            ui.add_space(20.0);
+            ui.text_edit_singleline(&mut self.string_scratchpad[1]);
+
+            if ui.button("Confirm").clicked() {
+                let valid_bitcoin_addr = is_valid_bitcoin_address(&self.string_scratchpad[0]);
+                let mut title = "Wallet Created";
+                let wallet_in_use = self
+                    .wallet_model
+                    .contains_wallet(&self.string_scratchpad[0]);
+                let title = match (valid_bitcoin_addr, wallet_in_use) {
+                    (true, false) => {
+                        self.wallet_model
+                            .add_contact(&self.string_scratchpad[0], &self.string_scratchpad[1]);
+                        self.change_state(destination);
+                        "Wallet Created"
+                    }
+                    (true, true) => "Wallet Already In Use",
+                    (false, _) => "Invalid Bitcoin Address",
+                };
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::WalletCreated,
+                    title: title,
                     dialog_line_edit: Vec::from([DialogLineEdit {
                         message: None,
                         line_edit: None,
                     }]),
                     optional: false,
                 });
-                self.change_state(destination);
             }
         });
     }
@@ -556,7 +632,7 @@ impl MyApp {
                     }
                     EntryType::Contact => {
                         self.wallet_model.delete_contact(&pub_key);
-                        self.change_state(CentralPanelState::ContactMain);
+                        self.change_state(CentralPanelState::ContactsMain);
                     }
                 }
             }
@@ -593,7 +669,7 @@ impl MyApp {
                     .rename_wallet(entry_type, &pub_key, &self.string_scratchpad[0]);
                 match entry_type {
                     EntryType::Wallet => self.change_state(CentralPanelState::WalletMain),
-                    EntryType::Contact => self.change_state(CentralPanelState::ContactMain),
+                    EntryType::Contact => self.change_state(CentralPanelState::ContactsMain),
                 }
             }
         });
@@ -644,14 +720,14 @@ impl MyApp {
                     CentralPanelState::WalletNotInitialised,
                     &mnemonic_string.clone(),
                 ),
-            CentralPanelState::WalletNotInitialised => {}
+            CentralPanelState::WalletNotInitialised => self.wallet_initialisation(),
             CentralPanelState::PasswordNeeded { destination } => {
                 self.render_enter_password_panel(ui, false, None, *destination.clone())
             }
             CentralPanelState::WalletMain => self.render_wallet_main_panel(ui, true, None),
             CentralPanelState::SendingMain => self.render_sending_panel(ui, true, None),
             CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
-            CentralPanelState::ContactMain => self.render_contacts_panel(ui, true, None),
+            CentralPanelState::ContactsMain => self.render_contacts_panel(ui, true, None),
             CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
             CentralPanelState::WalletDelete { pub_key } => self.render_delete_wallet_panel(
                 ui,
@@ -690,8 +766,41 @@ impl MyApp {
                 Some(CentralPanelState::WalletMain),
                 CentralPanelState::WalletMain,
             ),
+            CentralPanelState::ContactsNewContact => self.render_new_contact(
+                ui,
+                true,
+                Some(CentralPanelState::ContactsMain),
+                CentralPanelState::ContactsMain,
+            ),
         });
     }
+
+    pub fn wallet_initialisation(&mut self) {
+        if !self.wallet_model.does_file_exist() {
+            self.central_panel_state = CentralPanelState::WalletFileNotAvailable;
+            return;
+        }
+
+        if self.wallet_model.key.is_none() {
+            self.central_panel_state = CentralPanelState::PasswordNeeded {
+                destination: Box::new(CentralPanelState::WalletNotInitialised),
+            };
+            return;
+        } else {
+            self.wallet_model.initialise_from_wallet_file().unwrap();
+            if self.wallet_model.json_wallet_data.wallets.is_empty() {
+                self.central_panel_state = CentralPanelState::NoWalletsInWalletFile {
+                    mnemonic_string: generate_mnemonic_string().unwrap(),
+                };
+                return;
+            } else {
+                self.initialise_last_interaction_time();
+                self.central_panel_state = CentralPanelState::WalletMain;
+                return;
+            }
+        }
+    }
+
     pub fn clear_string_scratchpad(&mut self) {
         self.string_scratchpad = [String::new(), String::new(), String::new()];
     }

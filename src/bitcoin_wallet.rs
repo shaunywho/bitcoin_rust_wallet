@@ -47,8 +47,8 @@ pub fn generate_mnemonic_string() -> Result<String, anyhow::Error> {
     return Ok(mnemonic.to_string());
 }
 
-pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, KeyError> {
-    let mnemonic = Mnemonic::parse(mnemonic).unwrap();
+pub fn generate_xpriv(mnemonic: &str) -> Result<ExtendedPrivKey, anyhow::Error> {
+    let mnemonic = Mnemonic::parse(mnemonic)?;
     // Generate the extended key
     let xkey: ExtendedKey = mnemonic.into_extended_key()?;
     // Get xprv from the extended key
