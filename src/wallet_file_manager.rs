@@ -281,7 +281,11 @@ impl WalletModel {
         if self.contains_wallet(&pub_key) {
             panic!("Contact already exists");
         }
-        self.add_to_wallet(None, None, pub_key, wallet_name);
+        let mut saved_wallet_name = wallet_name;
+        if wallet_name.len() == 0 {
+            saved_wallet_name = &pub_key;
+        }
+        self.add_to_wallet(None, None, pub_key, saved_wallet_name);
 
         return Ok(());
     }
@@ -466,17 +470,13 @@ impl WalletModel {
         }
     }
 
-    pub fn contains_wallet(&self, pub_key: &str) -> bool {
-        let wallets_contain_wallet = self
-            .json_wallet_data
-            .wallets
-            .iter()
-            .any(|wallet| wallet.pub_key == pub_key);
-        let contacts_contain_wallet = self
-            .json_wallet_data
-            .contacts
-            .iter()
-            .any(|wallet| wallet.pub_key == pub_key);
+    pub fn contains_wallet(&self, address: &str) -> bool {
+        let wallets_contain_wallet = self.json_wallet_data.wallets.iter().any(|wallet| {
+            wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
+        });
+        let contacts_contain_wallet = self.json_wallet_data.contacts.iter().any(|wallet| {
+            wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
+        });
 
         return wallets_contain_wallet || contacts_contain_wallet;
     }

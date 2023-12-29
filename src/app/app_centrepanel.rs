@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     bitcoin_wallet::{
         generate_mnemonic_string, generate_qrcode_from_address, generate_wallet, generate_xpriv,
@@ -5,6 +7,7 @@ use crate::{
     },
     wallet_file_manager::EntryType,
 };
+use bdk::bitcoin::bip32::ExtendedPrivKey;
 use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 
@@ -372,36 +375,32 @@ impl MyApp {
             ui.add_space(20.0);
             ui.text_edit_singleline(&mut self.string_scratchpad[1]);
             if ui.button("Confirm").clicked() {
-                if self.string_scratchpad[0] == mnemonic_string {
-                    let priv_key = generate_xpriv(&self.string_scratchpad[0])
-                        .unwrap()
-                        .to_string();
+                let priv_key = generate_xpriv(&mnemonic_string).unwrap().to_string();
+                let copied_correctly = self.string_scratchpad[0] == mnemonic_string;
+                let wallet_in_use = self.wallet_model.contains_wallet(&priv_key);
+                let title = match (copied_correctly, wallet_in_use) {
+                    (true, false) => {
+                        self.change_state(destination);
+                        "Wallet Created"
+                    }
+                    (true, true) => {
+                        self.change_state(CentralPanelState::WalletNewWallet {
+                            mnemonic_string: generate_mnemonic_string().unwrap(),
+                        });
+                        "Wallet Already In Use"
+                    }
+                    (false, _) => "Incorrectly Copied",
+                };
 
-                    self.wallet_model
-                        .add_wallet(&priv_key, &mnemonic_string, &self.string_scratchpad[1])
-                        .unwrap();
-                    self.dialog_box = Some(DialogBox {
-                        dialog_box_enum: DialogBoxEnum::WalletCreated,
-                        title: "Wallet Created",
-                        dialog_line_edit: Vec::from([DialogLineEdit {
-                            message: None,
-                            line_edit: None,
-                        }]),
-                        optional: false,
-                    });
-                    self.change_state(destination);
-                    self.clear_string_scratchpad();
-                } else {
-                    self.dialog_box = Some(DialogBox {
-                        dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
-                        title: "Incorrect Mnemonic",
-                        dialog_line_edit: Vec::from([DialogLineEdit {
-                            message: Some("Check your entry and type in the mnemonic again".into()),
-                            line_edit: None,
-                        }]),
-                        optional: false,
-                    })
-                }
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::IncorrectMnemonic,
+                    title: title,
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                })
             }
         });
     }
@@ -425,41 +424,37 @@ impl MyApp {
             ui.text_edit_singleline(&mut self.string_scratchpad[1]);
 
             if ui.button("Confirm").clicked() {
-                let result = generate_xpriv(&self.string_scratchpad[0]);
-                match result {
-                    Err(_) => {
-                        self.dialog_box = Some(DialogBox {
-                            dialog_box_enum: DialogBoxEnum::WalletCreated,
-                            title: "Mnemonic Incorrect",
-                            dialog_line_edit: Vec::from([DialogLineEdit {
-                                message: None,
-                                line_edit: None,
-                            }]),
-                            optional: false,
-                        })
-                    }
+                let parse_result = generate_xpriv(&self.string_scratchpad[0]);
 
-                    Ok(xpriv) => {
-                        let priv_key = xpriv.to_string();
-                        self.wallet_model
-                            .add_wallet(
-                                &priv_key,
-                                &self.string_scratchpad[0],
-                                &self.string_scratchpad[1],
-                            )
-                            .unwrap();
-                        self.dialog_box = Some(DialogBox {
-                            dialog_box_enum: DialogBoxEnum::WalletCreated,
-                            title: "Wallet Added",
-                            dialog_line_edit: Vec::from([DialogLineEdit {
-                                message: None,
-                                line_edit: None,
-                            }]),
-                            optional: false,
-                        });
-                        self.change_state(destination);
+                let title = match &parse_result {
+                    Ok(xprv) => {
+                        let wallet_in_use = self.wallet_model.contains_wallet(&xprv.to_string());
+                        if !wallet_in_use {
+                            self.wallet_model
+                                .add_wallet(
+                                    &xprv.to_string(),
+                                    &self.string_scratchpad[0],
+                                    &self.string_scratchpad[1],
+                                )
+                                .unwrap();
+                            self.change_state(destination);
+                            "Wallet Added"
+                        } else {
+                            "Wallet Already In Use"
+                        }
                     }
-                }
+                    Err(_) => "Mnemonic Incorrect",
+                };
+
+                self.dialog_box = Some(DialogBox {
+                    dialog_box_enum: DialogBoxEnum::WalletCreated,
+                    title: title,
+                    dialog_line_edit: Vec::from([DialogLineEdit {
+                        message: None,
+                        line_edit: None,
+                    }]),
+                    optional: false,
+                })
             }
         });
     }
@@ -485,21 +480,17 @@ impl MyApp {
             if ui.button("Confirm").clicked() {
                 let valid_bitcoin_addr = is_valid_bitcoin_address(&self.string_scratchpad[0]);
                 let mut title = "Wallet Created";
-                if !valid_bitcoin_addr {
-                    title = "Invalid Bitcoin Address";
-                }
                 let wallet_in_use = self
                     .wallet_model
                     .contains_wallet(&self.string_scratchpad[0]);
-                if wallet_in_use {
-                    title = "Wallet already stored";
-                }
                 let title = match (valid_bitcoin_addr, wallet_in_use) {
                     (true, false) => {
+                        self.wallet_model
+                            .add_contact(&self.string_scratchpad[0], &self.string_scratchpad[1]);
                         self.change_state(destination);
                         "Wallet Created"
                     }
-                    (true, true) => "Wallet Already Stored",
+                    (true, true) => "Wallet Already In Use",
                     (false, _) => "Invalid Bitcoin Address",
                 };
                 self.dialog_box = Some(DialogBox {
