@@ -96,7 +96,7 @@ impl MyApp {
                         ui.heading("Date");
                     });
                     header.col(|ui| {
-                        ui.heading("Sender/Recipient");
+                        ui.heading("Recipient");
                     });
                 })
                 .body(|mut body| {
@@ -158,14 +158,18 @@ impl MyApp {
                                 });
                                 row.col(|ui| {
                                     let destination_string = match transaction_direction {
-                                        TransactionDirection::To => format!(
-                                            "To {}",
-                                            self.wallet_model.get_wallet_name(&address)
-                                        ),
-                                        TransactionDirection::From => format!(
-                                            "From {}",
-                                            self.wallet_model.get_wallet_name(&address)
-                                        ),
+                                        TransactionDirection::To => self
+                                            .wallet_model
+                                            .get_wallet_name(&address)
+                                            .unwrap_or_else(|| address.clone()),
+                                        TransactionDirection::From => self
+                                            .wallet_model
+                                            .get_wallet_name(
+                                                &self.wallet_model.get_active_wallet_pub_key(),
+                                            )
+                                            .unwrap_or_else(|| {
+                                                self.wallet_model.get_active_wallet_pub_key()
+                                            }),
                                     };
 
                                     ui.label(destination_string);
@@ -305,9 +309,8 @@ impl MyApp {
                     });
                 })
                 .body(|mut body| {
-                    let contacts = &self.wallet_model.json_wallet_data.contacts.clone();
+                    let contacts = self.wallet_model.json_wallet_data.contacts.clone();
                     for contact in contacts.iter() {
-                        let rename_contact = false;
                         body.row(30.0, |mut row| {
                             row.col(|ui| {
                                 ui.horizontal(|ui| {
@@ -435,7 +438,8 @@ impl MyApp {
 
                 let title = match &parse_result {
                     Ok(xprv) => {
-                        let wallet_in_use = self.wallet_model.contains_wallet(&xprv.to_string());
+                        let wallet_in_use =
+                            self.wallet_model.wallets_contain_wallet(&xprv.to_string());
                         if !wallet_in_use {
                             self.wallet_model
                                 .add_wallet(

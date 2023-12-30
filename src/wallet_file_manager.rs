@@ -27,6 +27,7 @@ use crate::bitcoin_wallet::generate_wallet;
 use crate::bitcoin_wallet::generate_xpriv;
 use crate::bitcoin_wallet::get_transaction_details;
 use crate::bitcoin_wallet::make_transaction;
+use crate::bitcoin_wallet::TransactionDirection;
 
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use serde::{Deserialize, Serialize};
@@ -216,19 +217,23 @@ impl WalletModel {
         if wallet_name.len() == 0 {
             saved_wallet_name = &pub_key;
         }
-        if self.contains_wallet(&pub_key) {
+        if self.wallets_contain_wallet(&pub_key) {
             panic!("Wallet already exists");
-        } else {
-            self.add_to_wallet(
-                Some(priv_key.to_string()),
-                Some(mnemonic.to_string()),
-                &pub_key,
-                saved_wallet_name,
-            )?;
-            self.wallet_objs
-                .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));
-            self.active_wallet = Some(pub_key.to_string());
         }
+
+        if self.contacts_contain_wallet(&pub_key) {
+            self.delete_contact(&pub_key)?;
+        }
+        self.add_to_wallet(
+            Some(priv_key.to_string()),
+            Some(mnemonic.to_string()),
+            &pub_key,
+            saved_wallet_name,
+        )?;
+
+        self.wallet_objs
+            .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));
+        self.active_wallet = Some(pub_key.to_string());
 
         return Ok(());
     }
@@ -330,8 +335,12 @@ impl WalletModel {
             transactions.clone(),
         )?;
         for transaction_details in transactions.clone().unwrap() {
-            let (_, pub_key, _, _, _, _) = get_transaction_details(transaction_details);
-            if !self.contains_wallet(&pub_key) {
+            let (transaction_direction, pub_key, _, _, _, _) =
+                get_transaction_details(transaction_details);
+            if self.contains_wallet(&pub_key) {
+                continue;
+            }
+            if transaction_direction == TransactionDirection::To {
                 let _ = self.add_contact(&pub_key, &pub_key);
             }
         }
@@ -343,21 +352,23 @@ impl WalletModel {
         return first_wallet;
     }
 
-    pub fn get_wallet_name(&self, pub_key: &str) -> String {
-        self.json_wallet_data
+    pub fn get_wallet_name(&self, pub_key: &str) -> Option<String> {
+        // First, try to find the wallet by public key
+        let wallet_name = self
+            .json_wallet_data
             .wallets
             .iter()
             .find(|wallet| wallet.pub_key == pub_key)
-            .map(|wallet| wallet.wallet_name.clone())
-            .unwrap_or_else(|| {
-                self.json_wallet_data
-                    .contacts
-                    .iter()
-                    .find(|contact| contact.pub_key == pub_key)
-                    .expect("Wallet not found in contacts")
-                    .wallet_name
-                    .clone()
-            })
+            .map(|wallet| wallet.wallet_name.clone());
+
+        // If not found in wallets, try to find in contacts
+        wallet_name.or_else(|| {
+            self.json_wallet_data
+                .contacts
+                .iter()
+                .find(|contact| contact.pub_key == pub_key)
+                .map(|contact| contact.wallet_name.clone())
+        })
     }
 
     pub fn get_active_wallet_pub_key(&self) -> String {
@@ -472,14 +483,24 @@ impl WalletModel {
     }
 
     pub fn contains_wallet(&self, address: &str) -> bool {
+        let wallets_contain_wallet = self.wallets_contain_wallet(address);
+        let contacts_contain_wallet = self.contacts_contain_wallet(address);
+
+        return wallets_contain_wallet || contacts_contain_wallet;
+    }
+
+    pub fn wallets_contain_wallet(&self, address: &str) -> bool {
         let wallets_contain_wallet = self.json_wallet_data.wallets.iter().any(|wallet| {
             wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
         });
+        return wallets_contain_wallet;
+    }
+
+    pub fn contacts_contain_wallet(&self, address: &str) -> bool {
         let contacts_contain_wallet = self.json_wallet_data.contacts.iter().any(|wallet| {
             wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
         });
-
-        return wallets_contain_wallet || contacts_contain_wallet;
+        return contacts_contain_wallet;
     }
 
     pub fn last_transaction(&self, pub_key: &str) -> Option<TransactionDetails> {
