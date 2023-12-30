@@ -307,10 +307,13 @@ impl MyApp {
                     header.col(|ui| {
                         ui.heading("Last Transaction Txid");
                     });
+                    header.col(|ui| {});
                 })
                 .body(|mut body| {
                     let contacts = self.wallet_model.json_wallet_data.contacts.clone();
                     for contact in contacts.iter() {
+                        let last_transaction =
+                            self.wallet_model.last_transaction(&contact.pub_key.clone());
                         body.row(30.0, |mut row| {
                             row.col(|ui| {
                                 ui.horizontal(|ui| {
@@ -327,22 +330,43 @@ impl MyApp {
                             });
 
                             row.col(|ui| {
-                                ui.label(contact.pub_key.clone());
-                            });
-                            row.col(|ui| {
-                                if ui.button("📋").on_hover_text("Click to copy").clicked() {
-                                    ui.output_mut(|o| o.copied_text = contact.pub_key.clone());
+                                if ui
+                                    .add(
+                                        egui::Label::new(&contact.pub_key)
+                                            .sense(egui::Sense::click()),
+                                    )
+                                    .on_hover_text("Copy Public Key")
+                                    .clicked()
+                                {
+                                    ui.output_mut(|o| {
+                                        o.copied_text = contact.pub_key.clone();
+                                    });
                                 }
+                                // ui.label(contact.pub_key.clone())
+                                //     .sense(egui::Sense::click()).;
                             });
 
                             row.col(|ui| {
-                                let last_transaction =
-                                    self.wallet_model.last_transaction(&contact.pub_key.clone());
                                 let mut last_transaction_string = "None".to_string();
-                                if let Some(last_transaction) = last_transaction {
+                                if let Some(last_transaction) = last_transaction.clone() {
                                     last_transaction_string = format!("{}", last_transaction.txid);
                                 }
                                 ui.label(last_transaction_string);
+                            });
+                            row.col(|ui| {
+                                if let None = last_transaction {
+                                    if ui
+                                        .add(egui::Label::new("✖").sense(egui::Sense::click()))
+                                        .on_hover_text("Delete Contact")
+                                        .clicked()
+                                    {
+                                        ui.output_mut(|o| {
+                                            self.change_state(CentralPanelState::ContactsDelete {
+                                                pub_key: contact.pub_key.clone(),
+                                            });
+                                        });
+                                    }
+                                }
                             });
                         });
                     }
@@ -797,7 +821,7 @@ impl MyApp {
                 true,
                 Some(CentralPanelState::ContactsMain),
                 CentralPanelState::ContactsMain,
-                self.wallet_model.get_active_wallet_pub_key(),
+                pub_key.to_string(),
             ),
         });
     }
