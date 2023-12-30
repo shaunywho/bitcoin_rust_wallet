@@ -190,8 +190,9 @@ pub fn get_transaction_details(
     let transaction = transaction_details.transaction.unwrap();
     let transaction_id = transaction_details.txid.to_string();
     let addresses = extract_address_from_transaction(&transaction.clone());
-    // let address_index = if transaction_total < 0 { 0 } else { 1 };
-    let transaction_address = addresses[0].clone();
+    let address_index = if transaction_total < 0 { 0 } else { 1 };
+    let transaction_address = addresses[address_index].clone();
+    println!("{}", &transaction_address);
     let fee = transaction_details.fee.unwrap();
     let confirmation_time = transaction_details.confirmation_time;
     let transaction_direction = if transaction_total < 0 {

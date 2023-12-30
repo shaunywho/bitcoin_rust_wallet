@@ -483,24 +483,24 @@ impl WalletModel {
     }
 
     pub fn last_transaction(&self, pub_key: &str) -> Option<TransactionDetails> {
-        let mut last_transactions = Vec::new();
+        let mut last_transaction: Option<&TransactionDetails> = None;
         for wallet in self.json_wallet_data.wallets.iter() {
-            if let Some(transaction) = &wallet.sorted_transactions {
-                let found_transaction = transaction.iter().find(|transaction| {
-                    extract_address_from_transaction(&transaction.transaction.clone().unwrap())[0]
-                        == pub_key
-                });
-                if let Some(transaction) = found_transaction {
-                    last_transactions.push(transaction);
+            if let Some(transactions) = &wallet.sorted_transactions {
+                for transaction in transactions.iter() {
+                    let (_, found_pub_key, _, _, _, _) =
+                        get_transaction_details(transaction.clone());
+                    if found_pub_key == pub_key {
+                        if last_transaction.is_none()
+                            || last_transaction.unwrap().confirmation_time
+                                < transaction.confirmation_time
+                        {
+                            last_transaction = Some(transaction);
+                        }
+                    }
                 }
             }
         }
-        if last_transactions.len() == 0 {
-            return None;
-        } else {
-            last_transactions.sort_by(|a, b| a.confirmation_time.cmp(&b.confirmation_time));
-            return Some(last_transactions[0].clone());
-        }
+        last_transaction.cloned()
     }
 }
 

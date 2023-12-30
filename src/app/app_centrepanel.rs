@@ -380,6 +380,13 @@ impl MyApp {
                 let wallet_in_use = self.wallet_model.contains_wallet(&priv_key);
                 let title = match (copied_correctly, wallet_in_use) {
                     (true, false) => {
+                        self.wallet_model
+                            .add_wallet(
+                                &priv_key,
+                                &self.string_scratchpad[0],
+                                &self.string_scratchpad[1],
+                            )
+                            .unwrap();
                         self.change_state(destination);
                         "Wallet Created"
                     }
