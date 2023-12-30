@@ -60,9 +60,7 @@ impl MyApp {
             }
             if self.wallet_model.json_wallet_data.wallets.len() > 1 {
                 if ui.button("Delete Wallet").clicked() {
-                    self.change_state(CentralPanelState::WalletDelete {
-                        pub_key: self.wallet_model.get_active_wallet_pub_key(),
-                    })
+                    self.change_state(CentralPanelState::WalletDelete);
                 }
             }
             if ui.button("Add New Wallet").clicked() {
@@ -98,7 +96,7 @@ impl MyApp {
                         ui.heading("Date");
                     });
                     header.col(|ui| {
-                        ui.heading("Sender/Recipient");
+                        ui.heading("Recipient");
                     });
                 })
                 .body(|mut body| {
@@ -160,14 +158,18 @@ impl MyApp {
                                 });
                                 row.col(|ui| {
                                     let destination_string = match transaction_direction {
-                                        TransactionDirection::To => format!(
-                                            "To {}",
-                                            self.wallet_model.get_wallet_name(&address)
-                                        ),
-                                        TransactionDirection::From => format!(
-                                            "From {}",
-                                            self.wallet_model.get_wallet_name(&address)
-                                        ),
+                                        TransactionDirection::To => self
+                                            .wallet_model
+                                            .get_wallet_name(&address)
+                                            .unwrap_or_else(|| address.clone()),
+                                        TransactionDirection::From => self
+                                            .wallet_model
+                                            .get_wallet_name(
+                                                &self.wallet_model.get_active_wallet_pub_key(),
+                                            )
+                                            .unwrap_or_else(|| {
+                                                self.wallet_model.get_active_wallet_pub_key()
+                                            }),
                                     };
 
                                     ui.label(destination_string);
@@ -294,6 +296,7 @@ impl MyApp {
                 .column(Column::exact(250.0).resizable(false))
                 .column(Column::exact(350.0))
                 .column(Column::exact(100.0))
+                .column(Column::exact(100.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Wallet Name");
@@ -301,11 +304,16 @@ impl MyApp {
                     header.col(|ui| {
                         ui.heading("Public Key");
                     });
+                    header.col(|ui| {
+                        ui.heading("Last Transaction Txid");
+                    });
                     header.col(|ui| {});
                 })
                 .body(|mut body| {
-                    let contacts = &self.wallet_model.json_wallet_data.contacts;
+                    let contacts = self.wallet_model.json_wallet_data.contacts.clone();
                     for contact in contacts.iter() {
+                        let last_transaction =
+                            self.wallet_model.last_transaction(&contact.pub_key.clone());
                         body.row(30.0, |mut row| {
                             row.col(|ui| {
                                 ui.horizontal(|ui| {
@@ -314,31 +322,50 @@ impl MyApp {
                                         .on_hover_text("Change")
                                         .clicked()
                                     {
-                                        let wallet_name = contact.wallet_name.clone();
-                                        self.dialog_box = Some(DialogBox {
-                                            dialog_box_enum: DialogBoxEnum::ChangeContactName {
-                                                pub_key: contact.pub_key.clone(),
-                                            },
-                                            title: "Change Wallet Name",
-                                            dialog_line_edit: Vec::from([DialogLineEdit {
-                                                message: Some(
-                                                    format!("Wallet name for {}", contact.pub_key)
-                                                        .into(),
-                                                ),
-                                                line_edit: Some(wallet_name),
-                                            }]),
-                                            optional: true,
+                                        self.change_state(CentralPanelState::ContactsRename {
+                                            pub_key: contact.pub_key.clone(),
                                         });
                                     }
                                 });
                             });
 
                             row.col(|ui| {
-                                ui.label(contact.pub_key.clone());
+                                if ui
+                                    .add(
+                                        egui::Label::new(&contact.pub_key)
+                                            .sense(egui::Sense::click()),
+                                    )
+                                    .on_hover_text("Copy Public Key")
+                                    .clicked()
+                                {
+                                    ui.output_mut(|o| {
+                                        o.copied_text = contact.pub_key.clone();
+                                    });
+                                }
+                                // ui.label(contact.pub_key.clone())
+                                //     .sense(egui::Sense::click()).;
+                            });
+
+                            row.col(|ui| {
+                                let mut last_transaction_string = "None".to_string();
+                                if let Some(last_transaction) = last_transaction.clone() {
+                                    last_transaction_string = format!("{}", last_transaction.txid);
+                                }
+                                ui.label(last_transaction_string);
                             });
                             row.col(|ui| {
-                                if ui.button("📋").on_hover_text("Click to copy").clicked() {
-                                    ui.output_mut(|o| o.copied_text = contact.pub_key.clone());
+                                if let None = last_transaction {
+                                    if ui
+                                        .add(egui::Label::new("✖").sense(egui::Sense::click()))
+                                        .on_hover_text("Delete Contact")
+                                        .clicked()
+                                    {
+                                        ui.output_mut(|o| {
+                                            self.change_state(CentralPanelState::ContactsDelete {
+                                                pub_key: contact.pub_key.clone(),
+                                            });
+                                        });
+                                    }
                                 }
                             });
                         });
@@ -380,6 +407,13 @@ impl MyApp {
                 let wallet_in_use = self.wallet_model.contains_wallet(&priv_key);
                 let title = match (copied_correctly, wallet_in_use) {
                     (true, false) => {
+                        self.wallet_model
+                            .add_wallet(
+                                &priv_key,
+                                &self.string_scratchpad[0],
+                                &self.string_scratchpad[1],
+                            )
+                            .unwrap();
                         self.change_state(destination);
                         "Wallet Created"
                     }
@@ -428,7 +462,8 @@ impl MyApp {
 
                 let title = match &parse_result {
                     Ok(xprv) => {
-                        let wallet_in_use = self.wallet_model.contains_wallet(&xprv.to_string());
+                        let wallet_in_use =
+                            self.wallet_model.wallets_contain_wallet(&xprv.to_string());
                         if !wallet_in_use {
                             self.wallet_model
                                 .add_wallet(
@@ -611,6 +646,7 @@ impl MyApp {
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
+        destination: CentralPanelState,
         pub_key: String,
     ) {
         self.boiler_plate_render(ui, watch, &source);
@@ -628,13 +664,12 @@ impl MyApp {
                 match entry_type {
                     EntryType::Wallet => {
                         self.wallet_model.delete_wallet(&pub_key);
-                        self.change_state(CentralPanelState::WalletMain);
                     }
                     EntryType::Contact => {
                         self.wallet_model.delete_contact(&pub_key);
-                        self.change_state(CentralPanelState::ContactsMain);
                     }
                 }
+                self.change_state(destination);
             }
         });
     }
@@ -643,6 +678,7 @@ impl MyApp {
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
+        destination: CentralPanelState,
         pub_key: String,
     ) {
         self.boiler_plate_render(ui, watch, &source);
@@ -667,10 +703,7 @@ impl MyApp {
             if ui.button("Confirm").clicked() {
                 self.wallet_model
                     .rename_wallet(entry_type, &pub_key, &self.string_scratchpad[0]);
-                match entry_type {
-                    EntryType::Wallet => self.change_state(CentralPanelState::WalletMain),
-                    EntryType::Contact => self.change_state(CentralPanelState::ContactsMain),
-                }
+                self.change_state(destination);
             }
         });
     }
@@ -729,16 +762,18 @@ impl MyApp {
             CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
             CentralPanelState::ContactsMain => self.render_contacts_panel(ui, true, None),
             CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
-            CentralPanelState::WalletDelete { pub_key } => self.render_delete_wallet_panel(
+            CentralPanelState::WalletDelete => self.render_delete_wallet_panel(
                 ui,
                 true,
                 Some(CentralPanelState::WalletMain),
-                pub_key.to_string(),
+                CentralPanelState::WalletMain,
+                self.wallet_model.get_active_wallet_pub_key(),
             ),
             CentralPanelState::WalletRename => self.render_rename_wallet_panel(
                 ui,
                 true,
                 Some(CentralPanelState::WalletMain),
+                CentralPanelState::WalletMain,
                 self.wallet_model.get_active_wallet_data().pub_key,
             ),
 
@@ -771,6 +806,22 @@ impl MyApp {
                 true,
                 Some(CentralPanelState::ContactsMain),
                 CentralPanelState::ContactsMain,
+            ),
+
+            CentralPanelState::ContactsRename { pub_key } => self.render_rename_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::ContactsMain),
+                CentralPanelState::ContactsMain,
+                pub_key.to_string(),
+            ),
+
+            CentralPanelState::ContactsDelete { pub_key } => self.render_delete_wallet_panel(
+                ui,
+                true,
+                Some(CentralPanelState::ContactsMain),
+                CentralPanelState::ContactsMain,
+                pub_key.to_string(),
             ),
         });
     }

@@ -27,6 +27,8 @@ type TransactionAddress = String;
 type TransactionId = String;
 type ConfirmationTime = BlockTime;
 const QRCODE_DIMENSION: usize = 300;
+
+#[derive(PartialEq)]
 pub enum TransactionDirection {
     To,
     From,
@@ -94,7 +96,7 @@ pub fn make_transaction(
             amount,
         )
         .enable_rbf();
-    println!("{:?}", tx_builder);
+
     let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
 
     let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
@@ -164,12 +166,40 @@ pub fn bitcoin_test() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
-pub fn extract_address_from_transaction(transaction: &Transaction) -> Vec<Address> {
-    transaction
-        .output
-        .iter()
-        .map(|output| Address::from_script(&output.script_pubkey, Network::Testnet).unwrap())
-        .collect()
+pub fn extract_address_from_transaction(
+    transaction_details: &TransactionDetails,
+) -> Option<String> {
+    let transaction_amount = transaction_details.received as i64 - transaction_details.sent as i64;
+    let transaction_total = if transaction_amount > 0 {
+        transaction_amount as u64
+    } else {
+        transaction_amount.abs() as u64 + transaction_details.fee.unwrap()
+    };
+    let transaction_direction = if transaction_total > 0 {
+        TransactionDirection::From
+    } else {
+        TransactionDirection::To
+    };
+    let outputs = transaction_details.transaction.clone().unwrap().output;
+
+    for output in outputs.iter() {
+        let address = Address::from_script(&output.script_pubkey, Network::Testnet).unwrap();
+        let value = output.value;
+        match transaction_direction {
+            TransactionDirection::To => {
+                if transaction_total == value {
+                    return Some(address.to_string());
+                }
+            }
+            TransactionDirection::From => {
+                if transaction_total != value {
+                    return Some(address.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 pub fn get_transaction_details(
@@ -183,18 +213,19 @@ pub fn get_transaction_details(
     Option<ConfirmationTime>,
 ) {
     let transaction_total = transaction_details.received as i64 - transaction_details.sent as i64;
-    let transaction = transaction_details.transaction.unwrap();
+    let transaction = transaction_details.transaction.clone().unwrap();
     let transaction_id = transaction_details.txid.to_string();
-    let addresses = extract_address_from_transaction(&transaction.clone());
-    // let address_index = if transaction_total < 0 { 0 } else { 1 };
-    let transaction_address = addresses[0].to_string();
+    let transaction_address =
+        extract_address_from_transaction(&transaction_details.clone()).unwrap();
+
     let fee = transaction_details.fee.unwrap();
-    let confirmation_time = transaction_details.confirmation_time;
+    let confirmation_time = transaction_details.clone().confirmation_time;
     let transaction_direction = if transaction_total < 0 {
         TransactionDirection::To
     } else {
         TransactionDirection::From
     };
+    // extract_address_from_transaction_test(&transaction_details);
     return (
         transaction_direction,
         transaction_address,

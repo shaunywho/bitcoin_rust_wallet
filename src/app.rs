@@ -27,13 +27,15 @@ pub enum CentralPanelState {
     ReceivingMain,
     ContactsMain,
     SettingsMain,
-    WalletDelete { pub_key: String },
+    WalletDelete,
     WalletRename,
     WalletSecret,
     WalletNewWallet { mnemonic_string: String },
     WalletExistingWallet,
     SettingsChangePassword,
     ContactsNewContact,
+    ContactsRename { pub_key: String },
+    ContactsDelete { pub_key: String },
 }
 
 #[derive(PartialEq)]
