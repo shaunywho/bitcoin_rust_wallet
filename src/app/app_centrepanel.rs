@@ -20,71 +20,82 @@ use zxcvbn::zxcvbn;
 impl MyApp {
     pub fn render_wallet_main_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
     ) {
+        let width = ui.available_width();
         self.boiler_plate_render(ui, watch, &source);
         let wallet = self.wallet_model.get_active_wallet_data();
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
-            ui.heading(&wallet.wallet_name.to_owned());
+            ui.heading("Active Wallet");
+            ui.add_space(10.0);
+            ui.heading(&wallet.wallet_name.to_owned()).rect;
         });
         ui.add_space(20.0);
-
+        egui::ComboBox::from_label("Choose Active Wallet")
+            .selected_text(format!(
+                "{}",
+                self.wallet_model.get_active_wallet_data().wallet_name
+            ))
+            .show_ui(ui, |ui| {
+                for wallet in self.wallet_model.json_wallet_data.wallets.iter() {
+                    if ui
+                        .selectable_value(
+                            &mut self.wallet_model.active_wallet.clone().unwrap(),
+                            wallet.pub_key.clone(),
+                            wallet.wallet_name.clone(),
+                        )
+                        .clicked()
+                    {
+                        self.wallet_model.active_wallet = Some(wallet.pub_key.clone());
+                    };
+                }
+            });
         ui.horizontal(|ui| {
-            egui::ComboBox::from_label("Selected Wallet")
-                .selected_text(format!(
-                    "{}",
-                    self.wallet_model.get_active_wallet_data().wallet_name
-                ))
-                .show_ui(ui, |ui| {
-                    for wallet in self.wallet_model.json_wallet_data.wallets.iter() {
-                        if ui
-                            .selectable_value(
-                                &mut self.wallet_model.active_wallet.clone().unwrap(),
-                                wallet.pub_key.clone(),
-                                wallet.wallet_name.clone(),
-                            )
-                            .clicked()
-                        {
-                            self.wallet_model.active_wallet = Some(wallet.pub_key.clone());
-                        };
-                    }
-                });
+            let button = egui::Button::new("Show Mnemonic");
+
             if ui.button("Show Mnemonic").clicked() {
                 self.change_state(CentralPanelState::WalletSecret);
             }
+            ui.add_space(width / 12.0);
             if ui.button("Rename Wallet").clicked() {
                 self.change_state(CentralPanelState::WalletRename);
             }
+
             if self.wallet_model.json_wallet_data.wallets.len() > 1 {
+                ui.add_space(width / 12.0);
                 if ui.button("Delete Wallet").clicked() {
                     self.change_state(CentralPanelState::WalletDelete);
                 }
             }
+            ui.add_space(width / 12.0);
             if ui.button("Add New Wallet").clicked() {
                 let mnemonic_string = generate_mnemonic_string().unwrap();
                 self.change_state(CentralPanelState::WalletNewWallet {
                     mnemonic_string: mnemonic_string,
                 })
             }
+            ui.add_space(width / 12.0);
             if ui.button("Add Existing Wallet").clicked() {
                 self.change_state(CentralPanelState::WalletExistingWallet)
             }
         });
         ui.add_space(20.0);
+        ui.separator();
         ui.vertical_centered(|ui| {
             let wallet = self.wallet_model.get_active_wallet_data();
-            ui.add_space(10.0);
+            ui.add_space(20.0);
             ui.heading(format!("Wallet Balance: {:?}", wallet.get_total()));
             ui.add_space(50.0);
 
             TableBuilder::new(ui)
-                .column(Column::exact(200.0).resizable(false))
-                .column(Column::exact(70.0))
-                .column(Column::exact(150.0))
-                .column(Column::exact(350.0))
+                .column(Column::exact(width / 4.0).resizable(true))
+                .column(Column::exact(width / 4.0).resizable(true))
+                .column(Column::exact(width / 4.0).resizable(true))
+                .column(Column::exact(width / 4.0).resizable(true))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Txid");
@@ -182,6 +193,7 @@ impl MyApp {
     }
     pub fn render_sending_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -245,6 +257,7 @@ impl MyApp {
 
     pub fn render_receiving_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -278,6 +291,7 @@ impl MyApp {
 
     pub fn render_contacts_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -376,6 +390,7 @@ impl MyApp {
 
     pub fn render_new_wallet_creation(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -441,6 +456,7 @@ impl MyApp {
 
     pub fn render_new_wallet_existing(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -496,6 +512,7 @@ impl MyApp {
 
     pub fn render_new_contact(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -543,6 +560,7 @@ impl MyApp {
 
     pub fn render_create_password_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -600,6 +618,7 @@ impl MyApp {
 
     pub fn render_enter_password_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -631,18 +650,48 @@ impl MyApp {
 
     pub fn render_settings_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
     ) {
         self.boiler_plate_render(ui, watch, &source);
-        if ui.button("Change Password").clicked() {
-            self.change_state(CentralPanelState::SettingsChangePassword);
-        }
+
+        ui.vertical_centered(|ui| {
+            ui.add_space(20.0);
+            ui.heading("Change Settings");
+            ui.add_space(30.0);
+            if ui.button("Change Password").clicked() {
+                self.change_state(CentralPanelState::SettingsChangePassword);
+            }
+            ui.add_space(20.0);
+            ui.heading("Wallet File Path");
+            if ui.button(&self.folder_path).clicked() {
+                self.folder_path =
+                    tinyfiledialogs::select_folder_dialog("Select Folder", &self.folder_path)
+                        .unwrap_or_else(|| self.folder_path.clone());
+            }
+            ui.horizontal(|ui| {
+                let width = ui.available_width();
+                let mut style: egui::Style = (*ctx.style()).clone();
+                ui.add_space((width - style.spacing.slider_width) / 2.0);
+                ui.add(
+                    egui::Slider::new(&mut self.password_needed_timeout_s, 3..=1200)
+                        .custom_formatter(|n, _| {
+                            let n = n as i32;
+                            let mins = (n / 60) % 60;
+                            let secs = n % 60;
+                            format!("{mins:02} mins {secs:02} secs")
+                        }),
+                );
+            });
+            ui.label("Idle Time before your password is required");
+        });
     }
 
     pub fn render_delete_wallet_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -675,6 +724,7 @@ impl MyApp {
     }
     pub fn render_rename_wallet_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -710,6 +760,7 @@ impl MyApp {
 
     pub fn render_wallet_secret_panel(
         &mut self,
+        ctx: &egui::Context,
         ui: &mut Ui,
         watch: bool,
         source: Option<CentralPanelState>,
@@ -740,6 +791,7 @@ impl MyApp {
     pub fn render_centrepanel(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| match &self.central_panel_state {
             CentralPanelState::WalletFileNotAvailable => self.render_create_password_panel(
+                ctx,
                 ui,
                 false,
                 None,
@@ -747,6 +799,7 @@ impl MyApp {
             ),
             CentralPanelState::NoWalletsInWalletFile { mnemonic_string } => self
                 .render_new_wallet_creation(
+                    ctx,
                     ui,
                     false,
                     None,
@@ -755,14 +808,15 @@ impl MyApp {
                 ),
             CentralPanelState::WalletNotInitialised => self.wallet_initialisation(),
             CentralPanelState::PasswordNeeded { destination } => {
-                self.render_enter_password_panel(ui, false, None, *destination.clone())
+                self.render_enter_password_panel(ctx, ui, false, None, *destination.clone())
             }
-            CentralPanelState::WalletMain => self.render_wallet_main_panel(ui, true, None),
-            CentralPanelState::SendingMain => self.render_sending_panel(ui, true, None),
-            CentralPanelState::ReceivingMain => self.render_receiving_panel(ui, true, None),
-            CentralPanelState::ContactsMain => self.render_contacts_panel(ui, true, None),
-            CentralPanelState::SettingsMain => self.render_settings_panel(ui, true, None),
+            CentralPanelState::WalletMain => self.render_wallet_main_panel(ctx, ui, true, None),
+            CentralPanelState::SendingMain => self.render_sending_panel(ctx, ui, true, None),
+            CentralPanelState::ReceivingMain => self.render_receiving_panel(ctx, ui, true, None),
+            CentralPanelState::ContactsMain => self.render_contacts_panel(ctx, ui, true, None),
+            CentralPanelState::SettingsMain => self.render_settings_panel(ctx, ui, true, None),
             CentralPanelState::WalletDelete => self.render_delete_wallet_panel(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::WalletMain),
@@ -770,6 +824,7 @@ impl MyApp {
                 self.wallet_model.get_active_wallet_pub_key(),
             ),
             CentralPanelState::WalletRename => self.render_rename_wallet_panel(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::WalletMain),
@@ -778,9 +833,10 @@ impl MyApp {
             ),
 
             CentralPanelState::WalletSecret => {
-                self.render_wallet_secret_panel(ui, true, Some(CentralPanelState::WalletMain))
+                self.render_wallet_secret_panel(ctx, ui, true, Some(CentralPanelState::WalletMain))
             }
             CentralPanelState::SettingsChangePassword => self.render_create_password_panel(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::SettingsMain),
@@ -789,6 +845,7 @@ impl MyApp {
 
             CentralPanelState::WalletNewWallet { mnemonic_string } => self
                 .render_new_wallet_creation(
+                    ctx,
                     ui,
                     true,
                     Some(CentralPanelState::WalletMain),
@@ -796,12 +853,14 @@ impl MyApp {
                     &mnemonic_string.clone(),
                 ),
             CentralPanelState::WalletExistingWallet => self.render_new_wallet_existing(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::WalletMain),
                 CentralPanelState::WalletMain,
             ),
             CentralPanelState::ContactsNewContact => self.render_new_contact(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::ContactsMain),
@@ -809,6 +868,7 @@ impl MyApp {
             ),
 
             CentralPanelState::ContactsRename { pub_key } => self.render_rename_wallet_panel(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::ContactsMain),
@@ -817,6 +877,7 @@ impl MyApp {
             ),
 
             CentralPanelState::ContactsDelete { pub_key } => self.render_delete_wallet_panel(
+                ctx,
                 ui,
                 true,
                 Some(CentralPanelState::ContactsMain),

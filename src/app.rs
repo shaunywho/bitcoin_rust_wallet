@@ -77,6 +77,8 @@ pub struct MyApp {
     string_scratchpad: [String; 3],
     dialog_box: Option<DialogBox>,
     last_interaction_time: DateTime<chrono::Local>,
+    folder_path: String,
+    password_needed_timeout_s: i64,
 }
 
 impl MyApp {
@@ -143,7 +145,7 @@ impl MyApp {
     pub fn new() -> Self {
         let central_panel_state = CentralPanelState::WalletNotInitialised;
         let side_panel_active = SidePanel::Wallet;
-        let wallet_model = WalletModel::new(FILENAME);
+        let wallet_model = WalletModel::new();
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
 
         let recipient_address_string = String::new();
@@ -152,7 +154,8 @@ impl MyApp {
         let active_threads = Arc::new(Mutex::new(HashMap::new()));
         let last_interaction_time = chrono::offset::Local::now();
         let string_scratchpad = [String::new(), String::new(), String::new()];
-
+        let folder_path = "/Users/shaun/Dropbox/Mac/Documents".to_string();
+        let password_needed_timeout_s = 300;
         let slf = Self {
             central_panel_state: central_panel_state,
             side_panel_active: side_panel_active,
@@ -163,6 +166,8 @@ impl MyApp {
             dialog_box: dialog_box,
             last_interaction_time: last_interaction_time,
             string_scratchpad: string_scratchpad,
+            folder_path: folder_path,
+            password_needed_timeout_s: password_needed_timeout_s,
         };
 
         slf
@@ -282,7 +287,7 @@ impl MyApp {
     fn password_needed_watchdog_timer(&mut self) {
         let current_time = chrono::offset::Local::now();
         if (current_time - self.last_interaction_time)
-            > Duration::seconds(PASSWORD_NEEDED_TIMEOUT_S)
+            > Duration::seconds(self.password_needed_timeout_s)
         {
             self.central_panel_state = CentralPanelState::PasswordNeeded {
                 destination: Box::new(self.central_panel_state.clone()),
