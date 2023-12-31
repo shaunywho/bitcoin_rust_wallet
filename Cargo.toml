@@ -41,4 +41,5 @@ serde_json = "1.0.108"
 serde-encrypt = "0.7.0"
 magic-crypt = "3.1.13"
 tinyfiledialogs = "3.9.1"
+directories-next = "2.0.0"
 

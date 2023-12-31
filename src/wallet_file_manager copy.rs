@@ -15,20 +15,17 @@ use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
 
-use crate::bitcoin_wallet::extract_address_from_transaction;
-use crate::bitcoin_wallet::generate_wallet;
-use crate::bitcoin_wallet::generate_xpriv;
-use crate::bitcoin_wallet::get_transaction_details;
-use crate::bitcoin_wallet::make_transaction;
-use crate::bitcoin_wallet::TransactionDirection;
-use directories_next::UserDirs;
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
+
+use crate::bitcoin_wallet::generate_wallet;
+use crate::bitcoin_wallet::generate_xpriv;
+use crate::bitcoin_wallet::get_transaction_details;
+use crate::bitcoin_wallet::make_transaction;
 
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use serde::{Deserialize, Serialize};
@@ -54,7 +51,7 @@ pub enum EntryType {
     Contact,
 }
 
-const FILENAME: &str = "wallet.txt";
+const FILENAME: &str = "./wallet.txt";
 
 pub struct SyncData {
     pub pub_key: String,
@@ -65,7 +62,7 @@ pub struct SyncData {
 pub struct WalletModel {
     pub json_wallet_data: JsonWalletData,
     pub wallet_objs: HashMap<String, Arc<Mutex<Wallet<MemoryDatabase>>>>,
-    filepath: PathBuf,
+    filename: String,
     blockchain: Arc<ElectrumBlockchain>,
     pub active_wallet: Option<String>,
     pub key: Option<MagicCrypt256>,
@@ -109,7 +106,7 @@ impl WalletModel {
         return handle;
     }
     pub fn does_file_exist(&self) -> bool {
-        let result = fs::metadata(&self.filepath);
+        let result = fs::metadata(FILENAME);
         if let Ok(_metadata) = result {
             return true;
         } else {
@@ -123,7 +120,7 @@ impl WalletModel {
         return handle;
     }
 
-    pub fn new() -> Self {
+    pub fn new(filename: &str) -> Self {
         let client = Client::new("ssl://electrum.blockstream.info:60002").unwrap();
         let blockchain = ElectrumBlockchain::from(client);
         let wallet_data = Self {
@@ -132,7 +129,7 @@ impl WalletModel {
                 contacts: Vec::new(),
             },
             wallet_objs: HashMap::new(),
-            filepath: get_wallet_path(FILENAME).expect("Documents directory not found"),
+            filename: filename.to_string(),
             blockchain: Arc::new(blockchain),
             active_wallet: None,
             key: None,
@@ -147,7 +144,7 @@ impl WalletModel {
             .write(true)
             .create(true)
             .append(true)
-            .open(self.filepath.clone())
+            .open(self.filename.clone())
             .unwrap()
     }
 
@@ -210,31 +207,28 @@ impl WalletModel {
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let wallet = generate_wallet(&priv_key).unwrap();
-        let pub_key = wallet
+        let pub_key = &wallet
             .get_address(AddressIndex::Peek(0))
             .unwrap()
             .to_string();
-        let mut saved_wallet_name = wallet_name;
-        if wallet_name.len() == 0 {
-            saved_wallet_name = &pub_key;
-        }
-        if self.wallets_contain_wallet(&pub_key) {
+        if self
+            .json_wallet_data
+            .wallets
+            .iter()
+            .any(|wallet| &wallet.pub_key == pub_key)
+        {
             panic!("Wallet already exists");
+        } else {
+            self.add_to_wallet(
+                Some(priv_key.to_string()),
+                Some(mnemonic.to_string()),
+                pub_key,
+                wallet_name,
+            )?;
+            self.wallet_objs
+                .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));
+            self.active_wallet = Some(pub_key.to_string());
         }
-
-        if self.contacts_contain_wallet(&pub_key) {
-            self.delete_contact(&pub_key)?;
-        }
-        self.add_to_wallet(
-            Some(priv_key.to_string()),
-            Some(mnemonic.to_string()),
-            &pub_key,
-            saved_wallet_name,
-        )?;
-
-        self.wallet_objs
-            .insert(pub_key.to_string(), Arc::new(Mutex::new(wallet)));
-        self.active_wallet = Some(pub_key.to_string());
 
         return Ok(());
     }
@@ -277,7 +271,7 @@ impl WalletModel {
     pub fn write_to_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let json_string = serde_json::to_string(&self.json_wallet_data)?;
         let encrypted_string = self.key.clone().unwrap().encrypt_str_to_base64(json_string);
-        fs::write(&self.filepath, encrypted_string)?;
+        fs::write(&self.filename, encrypted_string)?;
         return Ok(());
     }
     pub fn add_contact(
@@ -285,14 +279,15 @@ impl WalletModel {
         pub_key: &str,
         wallet_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if self.contains_wallet(&pub_key) {
-            panic!("Contact already exists");
+        if self
+            .json_wallet_data
+            .contacts
+            .iter()
+            .any(|wallet| wallet.pub_key == pub_key)
+        {
+            return Ok(());
         }
-        let mut saved_wallet_name = wallet_name;
-        if wallet_name.len() == 0 {
-            saved_wallet_name = &pub_key;
-        }
-        self.add_to_wallet(None, None, pub_key, saved_wallet_name);
+        self.add_to_wallet(None, None, pub_key, wallet_name);
 
         return Ok(());
     }
@@ -336,13 +331,14 @@ impl WalletModel {
             transactions.clone(),
         )?;
         for transaction_details in transactions.clone().unwrap() {
-            let (transaction_direction, pub_key, _, _, _, _) =
-                get_transaction_details(transaction_details);
-            if self.contains_wallet(&pub_key) {
-                continue;
-            }
-            if transaction_direction == TransactionDirection::To {
-                let _ = self.add_contact(&pub_key, &pub_key);
+            let (_, address, _, _, _, _) = get_transaction_details(transaction_details);
+            if !self
+                .json_wallet_data
+                .wallets
+                .iter()
+                .any(|wallet| wallet.pub_key == address)
+            {
+                let _ = self.add_contact(&address, &address);
             }
         }
         return Ok(());
@@ -353,23 +349,21 @@ impl WalletModel {
         return first_wallet;
     }
 
-    pub fn get_wallet_name(&self, pub_key: &str) -> Option<String> {
-        // First, try to find the wallet by public key
-        let wallet_name = self
-            .json_wallet_data
+    pub fn get_wallet_name(&self, pub_key: &str) -> String {
+        self.json_wallet_data
             .wallets
             .iter()
             .find(|wallet| wallet.pub_key == pub_key)
-            .map(|wallet| wallet.wallet_name.clone());
-
-        // If not found in wallets, try to find in contacts
-        wallet_name.or_else(|| {
-            self.json_wallet_data
-                .contacts
-                .iter()
-                .find(|contact| contact.pub_key == pub_key)
-                .map(|contact| contact.wallet_name.clone())
-        })
+            .map(|wallet| wallet.wallet_name.clone())
+            .unwrap_or_else(|| {
+                self.json_wallet_data
+                    .contacts
+                    .iter()
+                    .find(|contact| contact.pub_key == pub_key)
+                    .expect("Wallet not found in contacts")
+                    .wallet_name
+                    .clone()
+            })
     }
 
     pub fn get_active_wallet_pub_key(&self) -> String {
@@ -482,48 +476,6 @@ impl WalletModel {
             }
         }
     }
-
-    pub fn contains_wallet(&self, address: &str) -> bool {
-        let wallets_contain_wallet = self.wallets_contain_wallet(address);
-        let contacts_contain_wallet = self.contacts_contain_wallet(address);
-
-        return wallets_contain_wallet || contacts_contain_wallet;
-    }
-
-    pub fn wallets_contain_wallet(&self, address: &str) -> bool {
-        let wallets_contain_wallet = self.json_wallet_data.wallets.iter().any(|wallet| {
-            wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
-        });
-        return wallets_contain_wallet;
-    }
-
-    pub fn contacts_contain_wallet(&self, address: &str) -> bool {
-        let contacts_contain_wallet = self.json_wallet_data.contacts.iter().any(|wallet| {
-            wallet.pub_key == address || wallet.priv_key == Some(address.to_string())
-        });
-        return contacts_contain_wallet;
-    }
-
-    pub fn last_transaction(&self, pub_key: &str) -> Option<TransactionDetails> {
-        let mut last_transaction: Option<&TransactionDetails> = None;
-        for wallet in self.json_wallet_data.wallets.iter() {
-            if let Some(transactions) = &wallet.sorted_transactions {
-                for transaction in transactions.iter() {
-                    let (_, found_pub_key, _, _, _, _) =
-                        get_transaction_details(transaction.clone());
-                    if found_pub_key == pub_key {
-                        if last_transaction.is_none()
-                            || last_transaction.unwrap().confirmation_time
-                                < transaction.confirmation_time
-                        {
-                            last_transaction = Some(transaction);
-                        }
-                    }
-                }
-            }
-        }
-        last_transaction.cloned()
-    }
 }
 
 pub fn encryption_test() {
@@ -537,14 +489,6 @@ pub fn encryption_test() {
         "http://magiclen.org",
         mc.decrypt_base64_to_string(&base64).unwrap()
     );
-}
-
-pub fn get_documents_directory() -> Option<PathBuf> {
-    UserDirs::new().and_then(|dirs| dirs.document_dir().map(PathBuf::from))
-}
-
-pub fn get_wallet_path(wallet_file_name: &str) -> Option<PathBuf> {
-    return get_documents_directory().and_then(|path| Some(path.join(wallet_file_name)));
 }
 
 #[cfg(test)]

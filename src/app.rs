@@ -145,7 +145,7 @@ impl MyApp {
     pub fn new() -> Self {
         let central_panel_state = CentralPanelState::WalletNotInitialised;
         let side_panel_active = SidePanel::Wallet;
-        let wallet_model = WalletModel::new(FILENAME);
+        let wallet_model = WalletModel::new();
         let (sync_data_sender, sync_data_receiver) = mpsc::channel();
 
         let recipient_address_string = String::new();
